@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+apify-client
+python-docx
+pydantic
+python-dotenv
+jinja2
+python-multipart
