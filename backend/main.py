@@ -30,7 +30,7 @@ class SearchRequest(BaseModel):
     strict_mode: bool = False
 
 class Post(BaseModel):
-    id: str
+    id: Optional[str] = ""
     network: str
     author: str
     author_url: str
