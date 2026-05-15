@@ -7,6 +7,9 @@ client = ApifyClient(APIFY_API_KEY)
 def fetch_posts(networks, keywords, hashtags, accounts, date_since):
     all_posts = []
     
+    # Limpiar # si el frontend los manda incluidos
+    hashtags_clean = [h.lstrip("#") for h in hashtags]
+
     for network in networks:
         actor_id = APIFY_ACTORS.get(network)
         if not actor_id:
@@ -15,46 +18,40 @@ def fetch_posts(networks, keywords, hashtags, accounts, date_since):
         run_input = {}
 
         if network == "twitter":
-            search_terms = keywords + [f"#{h}" for h in hashtags]
             run_input = {
-                "searchTerms": search_terms,
-                "twitterHandles": accounts,
-                "maxItems": 20,
+                "searchTerms": keywords + [f"#{h}" for h in hashtags_clean],
+                "maxTweets": 20,
                 "since": date_since,
                 "lang": "es"
             }
 
         elif network == "instagram":
-            # ✅ FIX: el actor necesita URLs completas, no hashtags sueltos
-            direct_urls = [
-                f"https://www.instagram.com/explore/tags/{h}/"
-                for h in hashtags
+            start_urls = [
+                {"url": f"https://www.instagram.com/explore/tags/{h}/"}
+                for h in hashtags_clean
             ]
-            # También agregar perfiles si hay accounts
             for acc in accounts:
-                direct_urls.append(f"https://www.instagram.com/{acc}/")
-            
-            if not direct_urls:
+                start_urls.append({"url": f"https://www.instagram.com/{acc.lstrip('@')}/"})
+
+            if not start_urls:
                 print("Instagram: no hay hashtags ni cuentas, saltando.")
                 continue
 
             run_input = {
-                "directUrls": direct_urls,
-                "resultsType": "posts",
-                "resultsLimit": 20,
-                "addParentData": False
+                "startUrls": start_urls,
+                "resultsLimit": 20
             }
 
         elif network == "tiktok":
-            # ✅ FIX: el actor necesita searchQueries o hashtags, no solo profiles
             run_input = {
-                "searchQueries": keywords + hashtags,
-                "maxItems": 20,
+                "hashtags": hashtags_clean,
+                "maxItems": 20
             }
-            # Agregar perfiles solo si hay
+            if keywords:
+                run_input["keyword"] = keywords[0]
             if accounts:
                 run_input["profiles"] = [
-                    f"https://www.tiktok.com/@{acc}" for acc in accounts
+                    f"https://www.tiktok.com/@{acc.lstrip('@')}" for acc in accounts
                 ]
 
         print(f"DEBUG: Intentando {network} con: {run_input}")
@@ -67,16 +64,15 @@ def fetch_posts(networks, keywords, hashtags, accounts, date_since):
                     all_posts.append(normalized_post)
         except Exception as e:
             print(f"Error fetching from {network}: {e}")
-            
+
     return all_posts
 
 
 def normalize_item(item, network):
     if network == "twitter":
-        # ✅ FIX: apidojo/tweet-scraper anida el texto en item["legacy"]
         legacy = item.get("legacy", {})
         user = item.get("core", {}).get("user_results", {}).get("result", {}).get("legacy", {})
-        
+
         text = legacy.get("full_text") or item.get("full_text") or item.get("text", "")
         author = user.get("screen_name") or item.get("author_id", "unknown")
         tweet_id = legacy.get("id_str") or item.get("id_str") or item.get("id", "")
@@ -97,11 +93,12 @@ def normalize_item(item, network):
 
     elif network == "instagram":
         caption = item.get("caption") or item.get("alt") or ""
+        owner = item.get("ownerUsername") or item.get("username", "unknown")
         return {
             "id": str(item.get("id", "")),
             "network": "instagram",
-            "author": item.get("ownerUsername") or item.get("username", "unknown"),
-            "author_url": f"https://instagram.com/{item.get('ownerUsername', '')}",
+            "author": owner,
+            "author_url": f"https://instagram.com/{owner}",
             "text": caption,
             "date": item.get("timestamp", ""),
             "post_url": item.get("url") or item.get("shortCode", ""),
