@@ -96,6 +96,5 @@ async def generate_report(posts: List[Post]):
 if __name__ == "__main__":
     import uvicorn
     import os
-    # Esto lee el puerto que Railway te asigna automáticamente
-    port = int(os.environ.get("PORT", 8000)) 
+    port = int(os.environ.get("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
