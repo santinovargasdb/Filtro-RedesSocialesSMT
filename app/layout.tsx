@@ -1,0 +1,60 @@
+import type { Metadata } from "next";
+import "./globals.css";
+
+export const metadata: Metadata = {
+  title: "SMATA Social Monitor v2",
+  description: "Monitor institucional de redes sociales — Departamento de Prensa SMATA",
+};
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="es">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+      </head>
+      <body>
+        <header style={{
+          background: "linear-gradient(90deg, var(--smata-green-dark) 0%, #1e5c35 100%)",
+          borderBottom: "1px solid rgba(76,175,80,0.2)",
+          padding: "0 32px",
+          height: "60px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          position: "sticky",
+          top: 0,
+          zIndex: 100,
+          boxShadow: "0 2px 20px rgba(0,0,0,0.5)",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+            <div style={{
+              width: "36px", height: "36px", borderRadius: "8px",
+              background: "linear-gradient(135deg, var(--smata-green-mid), var(--smata-green-light))",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontWeight: 800, fontSize: "14px", color: "white", letterSpacing: "-0.5px"
+            }}>SM</div>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: "15px", letterSpacing: "0.02em" }}>
+                SMATA Social Monitor
+              </div>
+              <div style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: 400 }}>
+                Departamento de Prensa · Monitor v2
+              </div>
+            </div>
+          </div>
+          <div style={{
+            fontSize: "12px", color: "var(--text-muted)", fontWeight: 500,
+            padding: "4px 12px", borderRadius: "20px",
+            background: "rgba(255,255,255,0.05)",
+            border: "1px solid var(--border-color)"
+          }}>
+            {new Date().toLocaleDateString("es-AR", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+          </div>
+        </header>
+        {children}
+      </body>
+    </html>
+  );
+}
