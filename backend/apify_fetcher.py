@@ -92,16 +92,38 @@ def normalize_item(item, network):
         }
 
     elif network == "instagram":
-        caption = item.get("caption") or item.get("alt") or ""
-        owner = item.get("ownerUsername") or item.get("username", "unknown")
+        # DEBUG TEMPORAL - borrar después de confirmar la estructura
+        print(f"DEBUG INSTAGRAM ITEM KEYS: {list(item.keys())}")
+        print(f"DEBUG INSTAGRAM ITEM: {item}")
+
+        caption = item.get("caption") or item.get("alt") or item.get("text") or ""
+        owner = (
+            item.get("ownerUsername") or
+            item.get("username") or
+            item.get("owner", {}).get("username") or
+            "unknown"
+        )
+        timestamp = (
+            item.get("timestamp") or
+            item.get("taken_at_timestamp") or
+            item.get("date") or
+            ""
+        )
+        short_code = item.get("shortCode") or item.get("shortcode") or ""
+        url = (
+            item.get("url") or
+            item.get("displayUrl") or
+            (f"https://instagram.com/p/{short_code}" if short_code else "")
+        )
+
         return {
             "id": str(item.get("id", "")),
             "network": "instagram",
             "author": owner,
             "author_url": f"https://instagram.com/{owner}",
             "text": caption,
-            "date": item.get("timestamp", ""),
-            "post_url": item.get("url") or item.get("shortCode", ""),
+            "date": timestamp,
+            "post_url": url,
         }
 
     elif network == "tiktok":
