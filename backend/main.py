@@ -12,7 +12,7 @@ app = FastAPI(title="SMATA Social Monitor API")
 
 # Enable CORS for frontend
 # Configure FRONTEND_URL in .env for production (e.g. Vercel deployment)
-FRONTEND_URL = os.getenv("FRONTEND_URL", "*")
+FRONTEND_URL = "https://filtro-redes-sociales-smt.vercel.app"
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[FRONTEND_URL],
