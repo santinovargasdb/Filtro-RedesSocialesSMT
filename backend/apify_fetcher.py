@@ -18,16 +18,15 @@ def fetch_posts(networks, keywords, hashtags, accounts, date_since):
         run_input = {}
 
         if network == "twitter":
-            # Unimos las keywords y hashtags en una sola lista de términos de búsqueda
+            # Combinamos las palabras clave y hashtags en una lista única de búsqueda
             search_list = keywords + [f"#{h}" for h in hashtags_clean]
             
             run_input = {
-                "searchTerms": search_list,  # Parámetro correcto para el scraper lite
-                "maxItems": 3                # LIMITADO A 3 POSTS (Ahorro crítico de saldo)
+                "searchTerms": search_list,  # Parámetro correcto para la versión Lite
+                "maxItems": 3                # LÍMITE BAJO CONTROLADO (Ahorro crítico de saldo)
             }
 
         elif network == "instagram":
-            # El scraper de Instagram requiere URLs completas de exploración o perfiles
             start_urls = [
                 {"url": f"https://www.instagram.com/explore/tags/{h}/"}
                 for h in hashtags_clean
@@ -41,13 +40,13 @@ def fetch_posts(networks, keywords, hashtags, accounts, date_since):
 
             run_input = {
                 "startUrls": start_urls,
-                "resultsLimit": 10  # LIMITADO A 10 POSTS
+                "resultsLimit": 10  # BAJADO DE 20 A 10 POSTS MÁXIMO
             }
 
         elif network == "tiktok":
             run_input = {
                 "hashtags": hashtags_clean,
-                "maxItems": 10  # LIMITADO A 10 POSTS
+                "maxItems": 10  # BAJADO DE 20 A 10 POSTS MÁXIMO
             }
             if keywords:
                 run_input["keyword"] = keywords[0]
