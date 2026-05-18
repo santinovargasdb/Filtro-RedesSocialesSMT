@@ -10,18 +10,13 @@ import os
 
 app = FastAPI()
 
-# --- AQUÍ CONFIGURAMOS LOS PERMISOS DE CORS ---
-origins = [
-    "https://filtro-redes-sociales-smt.vercel.app",  # Tu URL de Vercel
-    "http://localhost:3000",                         # Por si pruebas en tu PC local
-]
-
+# Permitimos de forma masiva cualquier origen para descartar bloqueos
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,            # Permite el acceso a estas webs
-    allow_credentials=True,
-    allow_methods=["*"],              # Permite todos los métodos (POST, GET, etc.)
-    allow_headers=["*"],              # Permite todos los headers
+    allow_origins=["*"],  # <-- Cambiado a "*" para dar acceso total temporal
+    allow_credentials=False,  # <-- Ojo: Si usas "*" esto debe estar en False
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 # ----------------------------------------------
 
