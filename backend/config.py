@@ -32,7 +32,7 @@ SMATA_CORE_TERMS = {
 
 # Network Scrapers Configuration (Apify Actor IDs)
 APIFY_ACTORS = {
-    "twitter": "apidojo/tweet-scraper",
+    "twitter": "apidojo/twitter-scraper-lite", 
     "instagram": "apidojo/instagram-scraper",
     "tiktok": "apidojo/tiktok-scraper"
 }
