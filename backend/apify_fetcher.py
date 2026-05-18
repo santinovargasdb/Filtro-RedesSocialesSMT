@@ -1,60 +1,144 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import List, Optional
-from apify_fetcher import fetch_posts  # Asegúrate de que coincida con tu importación actual
-import os
+from apify_client import ApifyClient
+from config import APIFY_API_KEY, APIFY_ACTORS
+import datetime
 
-app = FastAPI()
+client = ApifyClient(APIFY_API_KEY)
 
-# ========================================================
-# 1. CONFIGURACIÓN DE CORS MIDDLEWARE (Siempre arriba)
-# ========================================================
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Permite peticiones desde cualquier origen de forma temporal
-    allow_credentials=False,
-    allow_methods=["GET", "POST", "OPTIONS", "PUT", "DELETE"],
-    allow_headers=["*"],
-)
+def fetch_posts(networks, keywords, hashtags, accounts, date_since):
+    all_posts = []
+    
+    # Limpiar # si el frontend los manda incluidos
+    hashtags_clean = [h.lstrip("#") for h in hashtags]
 
-# ========================================================
-# 2. MODELOS DE DATOS (Ajustalo si tus campos se llaman distinto)
-# ========================================================
-class SearchRequest(BaseModel):
-    networks: List[str]
-    keywords: List[str]
-    hashtags: List[str]
-    accounts: List[str]
-    date_since: Optional[str] = None
+    for network in networks:
+        actor_id = APIFY_ACTORS.get(network)
+        if not actor_id:
+            continue
 
-# ========================================================
-# 3. RUTAS Y ENDPOINTS
-# ========================================================
-@app.get("/")
-def read_root():
-    return {"status": "ok", "message": "Backend de Filtro de Redes Sociales corriendo perfectamente"}
+        run_input = {}
 
-@app.post("/api/search")  # <-- SIN barra al final para evitar problemas de redirección
-async def search_endpoint(request: SearchRequest):
-    try:
-        results = fetch_posts(
-            networks=request.networks,
-            keywords=request.keywords,
-            hashtags=request.hashtags,
-            accounts=request.accounts,
-            date_since=request.date_since
+        if network == "twitter":
+            # Combinamos las palabras clave y hashtags en una lista única de búsqueda
+            search_list = keywords + [f"#{h}" for h in hashtags_clean]
+            
+            run_input = {
+                "searchTerms": search_list,  # Parámetro correcto para la versión Lite
+                "maxItems": 3                # LÍMITE BAJO CONTROLADO (Ahorro crítico de saldo)
+            }
+
+        elif network == "instagram":
+            start_urls = [
+                {"url": f"https://www.instagram.com/explore/tags/{h}/"}
+                for h in hashtags_clean
+            ]
+            for acc in accounts:
+                start_urls.append({"url": f"https://www.instagram.com/{acc.lstrip('@')}/"})
+
+            if not start_urls:
+                print("Instagram: no hay hashtags ni cuentas, saltando.")
+                continue
+
+            run_input = {
+                "startUrls": start_urls,
+                "resultsLimit": 10  # BAJADO DE 20 A 10 POSTS MÁXIMO
+            }
+
+        elif network == "tiktok":
+            run_input = {
+                "hashtags": hashtags_clean,
+                "maxItems": 10  # BAJADO DE 20 A 10 POSTS MÁXIMO
+            }
+            if keywords:
+                run_input["keyword"] = keywords[0]
+            if accounts:
+                run_input["profiles"] = [
+                    f"https://www.tiktok.com/@{acc.lstrip('@')}" for acc in accounts
+                ]
+
+        print(f"DEBUG: Intentando {network} con: {run_input}")
+
+        try:
+            run = client.actor(actor_id).call(run_input=run_input)
+            for item in client.dataset(run["defaultDatasetId"]).iterate_items():
+                normalized_post = normalize_item(item, network)
+                if normalized_post:
+                    all_posts.append(normalized_post)
+        except Exception as e:
+            print(f"Error fetching from {network}: {e}")
+
+    return all_posts
+
+
+def normalize_item(item, network):
+    if network == "twitter":
+        legacy = item.get("legacy", {})
+        user = item.get("core", {}).get("user_results", {}).get("result", {}).get("legacy", {})
+
+        text = legacy.get("full_text") or item.get("full_text") or item.get("text", "")
+        author = user.get("screen_name") or item.get("author_id", "unknown")
+        tweet_id = legacy.get("id_str") or item.get("id_str") or item.get("id", "")
+        created_at = legacy.get("created_at") or item.get("created_at", "")
+
+        if not text:
+            return None
+
+        return {
+            "id": str(tweet_id),
+            "network": "twitter",
+            "author": author,
+            "author_url": f"https://x.com/{author}",
+            "text": text,
+            "date": created_at,
+            "post_url": f"https://x.com/{author}/status/{tweet_id}",
+        }
+
+    elif network == "instagram":
+        # DEBUG TEMPORAL - borrar después de confirmar la estructura
+        print(f"DEBUG INSTAGRAM ITEM KEYS: {list(item.keys())}")
+        print(f"DEBUG INSTAGRAM ITEM: {item}")
+
+        caption = item.get("caption") or item.get("alt") or item.get("text") or ""
+        owner = (
+            item.get("ownerUsername") or
+            item.get("username") or
+            item.get("owner", {}).get("username") or
+            "unknown"
         )
-        return {"status": "success", "data": results}
-    except Exception as e:
-        print(f"Error interno en el servidor: {e}")
-        return {"status": "error", "message": str(e)}
+        timestamp = (
+            item.get("timestamp") or
+            item.get("taken_at_timestamp") or
+            item.get("date") or
+            ""
+        )
+        short_code = item.get("shortCode") or item.get("shortcode") or ""
+        url = (
+            item.get("url") or
+            item.get("displayUrl") or
+            (f"https://instagram.com/p/{short_code}" if short_code else "")
+        )
 
-# ========================================================
-# 4. CONFIGURACIÓN DEL PUERTO DINÁMICO PARA RAILWAY
-# ========================================================
-if __name__ == "__main__":
-    import uvicorn
-    # Railway asigna un puerto aleatorio en la variable de entorno PORT
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+        return {
+            "id": str(item.get("id", "")),
+            "network": "instagram",
+            "author": owner,
+            "author_url": f"https://instagram.com/{owner}",
+            "text": caption,
+            "date": timestamp,
+            "post_url": url,
+        }
+
+    elif network == "tiktok":
+        author_meta = item.get("authorMeta", {})
+        author = author_meta.get("name") or author_meta.get("nickName", "unknown")
+        return {
+            "id": str(item.get("id", "")),
+            "network": "tiktok",
+            "author": author,
+            "author_url": f"https://www.tiktok.com/@{author}",
+            "text": item.get("text", ""),
+            "date": str(item.get("createTime", "")),
+            "post_url": item.get("webVideoUrl", ""),
+            "video_url": item.get("videoUrl")
+        }
+
+    return None
