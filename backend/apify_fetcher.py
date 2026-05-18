@@ -6,7 +6,7 @@ client = ApifyClient(APIFY_API_KEY)
 
 def fetch_posts(networks, keywords, hashtags, accounts, date_since):
     all_posts = []
-    
+    # ... acá sigue el resto de tu código normal ...
     # Limpiar # si el frontend los manda incluidos
     hashtags_clean = [h.lstrip("#") for h in hashtags]
 
