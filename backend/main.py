@@ -1,95 +1,60 @@
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
-import apify_fetcher
-import filters
-import docx_generator
-import datetime
+from apify_fetcher import fetch_posts  # Asegúrate de que coincida con tu importación actual
 import os
 
 app = FastAPI()
 
-# Permitimos de forma masiva cualquier origen para descartar bloqueos
+# ========================================================
+# 1. CONFIGURACIÓN DE CORS MIDDLEWARE (Siempre arriba)
+# ========================================================
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # <-- Cambiado a "*" para dar acceso total temporal
-    allow_credentials=False,  # <-- Ojo: Si usas "*" esto debe estar en False
-    allow_methods=["*"],
+    allow_origins=["*"],  # Permite peticiones desde cualquier origen de forma temporal
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS", "PUT", "DELETE"],
     allow_headers=["*"],
 )
-# ----------------------------------------------
 
-# ... abajo siguen tus rutas normales, como app.post("/api/search") ...
-
+# ========================================================
+# 2. MODELOS DE DATOS (Ajustalo si tus campos se llaman distinto)
+# ========================================================
 class SearchRequest(BaseModel):
+    networks: List[str]
     keywords: List[str]
     hashtags: List[str]
     accounts: List[str]
-    networks: List[str]
-    date: str = datetime.date.today().isoformat()
-    strict_mode: bool = False
+    date_since: Optional[str] = None
 
-class Post(BaseModel):
-    id: Optional[str] = ""
-    network: str
-    author: str
-    author_url: str
-    text: str
-    date: str
-    post_url: str
-    video_url: Optional[str] = None
-    relevance_score: Optional[int] = 0
-    matched_terms: Optional[List[str]] = []
+# ========================================================
+# 3. RUTAS Y ENDPOINTS
+# ========================================================
+@app.get("/")
+def read_root():
+    return {"status": "ok", "message": "Backend de Filtro de Redes Sociales corriendo perfectamente"}
 
-@app.post("/api/search")
-async def search_posts(request: SearchRequest):
+@app.post("/api/search")  # <-- SIN barra al final para evitar problemas de redirección
+async def search_endpoint(request: SearchRequest):
     try:
-        # 1. Fetch posts from Apify
-        raw_posts = apify_fetcher.fetch_posts(
+        results = fetch_posts(
             networks=request.networks,
             keywords=request.keywords,
             hashtags=request.hashtags,
             accounts=request.accounts,
-            date_since=request.date
+            date_since=request.date_since
         )
-        
-        # 2. Apply filters and scoring
-        processed_posts = filters.filter_posts(raw_posts, strict_mode=request.strict_mode)
-        
-        # 3. Generate summary
-        summary = {
-            "total": len(processed_posts),
-            "by_network": {
-                "twitter": len([p for p in processed_posts if p["network"] == "twitter"]),
-                "instagram": len([p for p in processed_posts if p["network"] == "instagram"]),
-                "tiktok": len([p for p in processed_posts if p["network"] == "tiktok"]),
-            },
-            "top_keywords": request.keywords # Simplified for now
-        }
-        
-        return {
-            "posts": processed_posts,
-            "summary": summary
-        }
+        return {"status": "success", "data": results}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Error interno en el servidor: {e}")
+        return {"status": "error", "message": str(e)}
 
-@app.post("/api/generate-docx")
-async def generate_report(posts: List[Post]):
-    try:
-        docx_bytes = docx_generator.generate_docx([p.dict() for p in posts])
-        return Response(
-            content=docx_bytes,
-            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            headers={"Content-Disposition": f"attachment; filename=informe_smata_{datetime.date.today()}.docx"}
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
+# ========================================================
+# 4. CONFIGURACIÓN DEL PUERTO DINÁMICO PARA RAILWAY
+# ========================================================
 if __name__ == "__main__":
     import uvicorn
-    import os
-    # Esto lee el puerto que Railway te asigna dinámicamente en sus servidores
+    # Railway asigna un puerto aleatorio en la variable de entorno PORT
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
