@@ -8,18 +8,24 @@ import docx_generator
 import datetime
 import os
 
-app = FastAPI(title="SMATA Social Monitor API")
+app = FastAPI()
 
-# Enable CORS for frontend
-# Configure FRONTEND_URL in .env for production (e.g. Vercel deployment)
-FRONTEND_URL = "https://filtro-redes-sociales-smt.vercel.app"
+# --- AQUÍ CONFIGURAMOS LOS PERMISOS DE CORS ---
+origins = [
+    "https://filtro-redes-sociales-smt.vercel.app",  # Tu URL de Vercel
+    "http://localhost:3000",                         # Por si pruebas en tu PC local
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[FRONTEND_URL],
+    allow_origins=origins,            # Permite el acceso a estas webs
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],              # Permite todos los métodos (POST, GET, etc.)
+    allow_headers=["*"],              # Permite todos los headers
 )
+# ----------------------------------------------
+
+# ... abajo siguen tus rutas normales, como app.post("/api/search") ...
 
 class SearchRequest(BaseModel):
     keywords: List[str]
