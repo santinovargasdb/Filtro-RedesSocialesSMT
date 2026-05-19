@@ -1,13 +1,39 @@
 from apify_client import ApifyClient
 from config import APIFY_API_KEY, APIFY_ACTORS
-import datetime
 
 client = ApifyClient(APIFY_API_KEY)
 
+
+def compute_score(text: str, keywords: list, hashtags: list) -> tuple[int, list]:
+    """Calcula relevance_score y matched_terms en base al texto del post."""
+    if not text:
+        return 0, []
+
+    text_lower = text.lower()
+    matched = []
+
+    for kw in keywords:
+        if kw.lower() in text_lower:
+            matched.append(kw)
+
+    for ht in hashtags:
+        ht_clean = ht.lstrip("#").lower()
+        if ht_clean in text_lower or f"#{ht_clean}" in text_lower:
+            matched.append(f"#{ht_clean}")
+
+    total_terms = len(keywords) + len(hashtags)
+    if total_terms == 0:
+        score = 50
+    else:
+        score = min(100, int((len(matched) / total_terms) * 100))
+        if score == 0 and matched:
+            score = 30
+
+    return score, matched
+
+
 def fetch_posts(networks, keywords, hashtags, accounts, date_since):
     all_posts = []
-    # ... acá sigue el resto de tu código normal ...
-    # Limpiar # si el frontend los manda incluidos
     hashtags_clean = [h.lstrip("#") for h in hashtags]
 
     for network in networks:
@@ -18,12 +44,10 @@ def fetch_posts(networks, keywords, hashtags, accounts, date_since):
         run_input = {}
 
         if network == "twitter":
-            # Combinamos las palabras clave y hashtags en una lista única de búsqueda
             search_list = keywords + [f"#{h}" for h in hashtags_clean]
-            
             run_input = {
-                "searchTerms": search_list,  # Parámetro correcto para la versión Lite
-                "maxItems": 3                # LÍMITE BAJO CONTROLADO (Ahorro crítico de saldo)
+                "searchTerms": search_list,
+                "maxItems": 3  # LÍMITE BAJO CONTROLADO (Ahorro crítico de saldo)
             }
 
         elif network == "instagram":
@@ -40,13 +64,13 @@ def fetch_posts(networks, keywords, hashtags, accounts, date_since):
 
             run_input = {
                 "startUrls": start_urls,
-                "resultsLimit": 10  # BAJADO DE 20 A 10 POSTS MÁXIMO
+                "resultsLimit": 10
             }
 
         elif network == "tiktok":
             run_input = {
                 "hashtags": hashtags_clean,
-                "maxItems": 10  # BAJADO DE 20 A 10 POSTS MÁXIMO
+                "maxItems": 10
             }
             if keywords:
                 run_input["keyword"] = keywords[0]
@@ -60,7 +84,7 @@ def fetch_posts(networks, keywords, hashtags, accounts, date_since):
         try:
             run = client.actor(actor_id).call(run_input=run_input)
             for item in client.dataset(run["defaultDatasetId"]).iterate_items():
-                normalized_post = normalize_item(item, network)
+                normalized_post = normalize_item(item, network, keywords, hashtags_clean)
                 if normalized_post:
                     all_posts.append(normalized_post)
         except Exception as e:
@@ -69,7 +93,10 @@ def fetch_posts(networks, keywords, hashtags, accounts, date_since):
     return all_posts
 
 
-def normalize_item(item, network):
+def normalize_item(item, network, keywords=None, hashtags=None):
+    keywords = keywords or []
+    hashtags = hashtags or []
+
     if network == "twitter":
         legacy = item.get("legacy", {})
         user = item.get("core", {}).get("user_results", {}).get("result", {}).get("legacy", {})
@@ -82,6 +109,8 @@ def normalize_item(item, network):
         if not text:
             return None
 
+        score, matched = compute_score(text, keywords, hashtags)
+
         return {
             "id": str(tweet_id),
             "network": "twitter",
@@ -90,10 +119,11 @@ def normalize_item(item, network):
             "text": text,
             "date": created_at,
             "post_url": f"https://x.com/{author}/status/{tweet_id}",
+            "relevance_score": score,
+            "matched_terms": matched,
         }
 
     elif network == "instagram":
-        # DEBUG TEMPORAL - borrar después de confirmar la estructura
         print(f"DEBUG INSTAGRAM ITEM KEYS: {list(item.keys())}")
         print(f"DEBUG INSTAGRAM ITEM: {item}")
 
@@ -117,28 +147,38 @@ def normalize_item(item, network):
             (f"https://instagram.com/p/{short_code}" if short_code else "")
         )
 
+        score, matched = compute_score(caption, keywords, hashtags)
+
         return {
             "id": str(item.get("id", "")),
             "network": "instagram",
             "author": owner,
             "author_url": f"https://instagram.com/{owner}",
             "text": caption,
-            "date": timestamp,
+            "date": str(timestamp),
             "post_url": url,
+            "relevance_score": score,
+            "matched_terms": matched,
         }
 
     elif network == "tiktok":
         author_meta = item.get("authorMeta", {})
         author = author_meta.get("name") or author_meta.get("nickName", "unknown")
+        text = item.get("text", "")
+
+        score, matched = compute_score(text, keywords, hashtags)
+
         return {
             "id": str(item.get("id", "")),
             "network": "tiktok",
             "author": author,
             "author_url": f"https://www.tiktok.com/@{author}",
-            "text": item.get("text", ""),
+            "text": text,
             "date": str(item.get("createTime", "")),
             "post_url": item.get("webVideoUrl", ""),
-            "video_url": item.get("videoUrl")
+            "video_url": item.get("videoUrl"),
+            "relevance_score": score,
+            "matched_terms": matched,
         }
 
     return None
