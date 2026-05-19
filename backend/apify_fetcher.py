@@ -67,21 +67,20 @@ def fetch_posts(networks, keywords, hashtags, accounts, date_since):
                 "resultsLimit": 10
             }
 
-       elif network == "tiktok":
-    # Combinar keywords y hashtags en un solo término de búsqueda
-    search_terms = keywords + hashtags_clean
-    if not search_terms:
-        print("TikTok: no hay keywords ni hashtags, saltando.")
-        continue
+        elif network == "tiktok":
+            search_terms = keywords + hashtags_clean
+            if not search_terms:
+                print("TikTok: no hay keywords ni hashtags, saltando.")
+                continue
 
-    run_input = {
-        "keyword": search_terms[0],  # TikTok solo acepta un keyword a la vez
-        "maxItems": 10
-    }
-    if accounts:
-        run_input["profiles"] = [
-            f"https://www.tiktok.com/@{acc.lstrip('@')}" for acc in accounts
-        ]
+            run_input = {
+                "keyword": search_terms[0],
+                "maxItems": 10
+            }
+            if accounts:
+                run_input["profiles"] = [
+                    f"https://www.tiktok.com/@{acc.lstrip('@')}" for acc in accounts
+                ]
 
         print(f"DEBUG: Intentando {network} con: {run_input}")
 
