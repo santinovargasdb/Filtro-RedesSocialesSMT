@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
 from apify_fetcher import fetch_posts  # Asegúrate de que coincida con tu importación actual
+from collections import Counter
 import os
 
 app = FastAPI()
@@ -34,8 +35,8 @@ class SearchRequest(BaseModel):
 @app.get("/")
 def read_root():
     return {"status": "ok", "message": "Backend de Filtro de Redes Sociales corriendo perfectamente"}
-
-@app.post("/api/search")  # <-- SIN barra al final para evitar problemas de redirección
+    
+@app.post("/api/search")
 async def search_endpoint(request: SearchRequest):
     try:
         results = fetch_posts(
@@ -45,11 +46,23 @@ async def search_endpoint(request: SearchRequest):
             accounts=request.accounts,
             date_since=request.date_since
         )
-        return {"status": "success", "data": results}
-    except Exception as e:
-        print(f"Error interno en el servidor: {e}")
-        return {"status": "error", "message": str(e)}
 
+        # Armar summary
+        by_network = Counter(p["network"] for p in results)
+        all_terms = [term for p in results for term in p.get("matched_terms", [])]
+        top_keywords = [term for term, _ in Counter(all_terms).most_common(5)]
+
+        return {
+            "posts": results,
+            "summary": {
+                "total": len(results),
+                "by_network": dict(by_network),
+                "top_keywords": top_keywords,
+            }
+        }
+    except Exception as e:
+        print(f"Error interno: {e}")
+        return {"status": "error", "message": str(e)}
 # ========================================================
 # 4. CONFIGURACIÓN DEL PUERTO DINÁMICO PARA RAILWAY
 # ========================================================
