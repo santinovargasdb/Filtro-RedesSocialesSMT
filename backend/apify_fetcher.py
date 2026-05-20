@@ -4,17 +4,16 @@ import google.generativeai as genai
 from ntscraper import Nitter
 
 # 1. Configuración de Google AI Studio
-# Leemos la API Key desde las variables de entorno de Railway
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 genai.configure(api_key=GOOGLE_API_KEY)
 
 # Inicializamos el modelo correcto sin el prefijo "models/"
 model = genai.GenerativeModel("gemini-1.5-flash")
 
-def generar_reporte_prensa(termino: str, fecha_desde: str = None, strict_mode: bool = False):
+def fetch_posts(termino: str, fecha_desde: str = None, strict_mode: bool = False):
     """
-    Función principal que raspa X (Twitter) usando ntscraper y procesa
-    los resultados con Gemini 1.5 Flash para devolver el JSON formateado.
+    Función principal llamada por main.py. Raspa X (Twitter) usando ntscraper 
+    y procesa los resultados con Gemini 1.5 Flash.
     """
     print(f"Iniciando búsqueda para: {termino}")
     
@@ -23,10 +22,9 @@ def generar_reporte_prensa(termino: str, fecha_desde: str = None, strict_mode: b
     tweets_crudos = []
     
     try:
-        # Corregido: Se usa 'get_tweets' que es el método real de la librería
+        # Se usa 'get_tweets' que es el método real de la librería
         tweets_data = scraper.get_tweets(termino, mode='term', number=15)
         
-        # Estructuramos los tweets recolectados
         if tweets_data and 'tweets' in tweets_data:
             for t in tweets_data['tweets']:
                 tweets_crudos.append({
@@ -37,21 +35,18 @@ def generar_reporte_prensa(termino: str, fecha_desde: str = None, strict_mode: b
                 })
     except Exception as e:
         print(f"Error raspando X con ntscraper: {str(e)}")
-        # Si falla el raspado, devolvemos una lista vacía para que no se caiga la app
         return []
 
-    # Si no encontramos ningún tweet, cortamos camino acá
     if not tweets_crudos:
         print("No se encontraron tweets para procesar.")
         return []
 
     # 3. Procesamiento y filtrado inteligente con Gemini
-    # Creamos el prompt estricto con las reglas de negocio de SMATA Prensa
     prompt = f"""
     Actúa como un analista de prensa experto para el sindicato SMATA. 
     Tu tarea es filtrar y procesar la siguiente lista de publicaciones encontradas en redes sociales sobre el término '{termino}'.
     
-    Analizá cada publicación y devolvé ÚNICAMENTE un arreglo en formato JSON estructurado con las publicaciones que tengan relevancia gremial o industrial para el sector automotriz.
+    Analizá cada publicación y devolvé ÚNICAMENTE un arreglo en formato JSON structured con las publicaciones que tengan relevancia gremial o industrial para el sector automotriz.
     
     Reglas estrictas de formato:
     1. El campo 'title' DEBE estar completamente en MAYÚSCULAS y resumir la noticia de forma directa (estilo titular de diario).
@@ -77,11 +72,9 @@ def generar_reporte_prensa(termino: str, fecha_desde: str = None, strict_mode: b
     """
 
     try:
-        # Llamamos a Google AI Studio para procesar el lote de tweets
         response = model.generate_content(prompt)
         text_response = response.text.strip()
         
-        # Convertimos la respuesta de texto de la IA en un objeto JSON nativo de Python
         resultado_final = json.loads(text_response)
         return resultado_final
         
