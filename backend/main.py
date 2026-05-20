@@ -3,41 +3,62 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
 from apify_fetcher import fetch_posts
+import os
 
-app = FastAPI(title="SMATA Social Monitor API", version="1.0.0")
+app = FastAPI()
 
-# Configuración de CORS imprescindible para que tu frontend en Vercel pueda consultar a Railway
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Permite peticiones desde cualquier origen (Vercel local/producción)
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS", "PUT", "DELETE"],
     allow_headers=["*"],
 )
 
-# Definición del esquema de los datos que envía el frontend al presionar "Buscar"
+
 class SearchRequest(BaseModel):
-    networks: List[str]
-    keywords: Optional[List[str]] = []
-    hashtags: Optional[List[str]] = []
-    accounts: Optional[List[str]] = []
-    date_since: Optional[str] = None
+    networks: List[str] = []
+    keywords: List[str] = []
+    hashtags: List[str] = []
+    accounts: List[str] = []
+    date: Optional[str] = None
+    strict_mode: bool = False
+
 
 @app.get("/")
 def read_root():
-    return {"status": "online", "message": "SMATA Backend funcionando con Google AI Studio"}
+    return {"status": "ok", "message": "Backend SMATA Social Monitor corriendo"}
+
 
 @app.post("/api/search")
-async def search_posts(request: SearchRequest):
-    """
-    Endpoint principal consumido por Vercel para ejecutar la extracción
-    gratuita y el filtrado por Inteligencia Artificial.
-    """
-    results = fetch_posts(
-        networks=request.networks,
-        keywords=request.keywords,
-        hashtags=request.hashtags,
-        accounts=request.accounts,
-        date_since=request.date_since
-    )
-    return {"posts": results}
+async def search_endpoint(request: SearchRequest):
+    try:
+        # Armar un término único combinando keywords y hashtags
+        partes = request.keywords + [f"#{h.lstrip('#')}" for h in request.hashtags]
+        termino = " ".join(partes) if partes else "SMATA"
+
+        print(f"DEBUG: término armado = '{termino}'")
+
+        results = fetch_posts(
+            termino=termino,
+            fecha_desde=request.date,
+            strict_mode=request.strict_mode,
+        )
+
+        return {
+            "posts": results,
+            "summary": {
+                "total": len(results),
+                "by_network": {"twitter": len(results)},
+                "top_keywords": request.keywords,
+            }
+        }
+    except Exception as e:
+        print(f"Error interno: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
