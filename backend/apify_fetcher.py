@@ -46,7 +46,7 @@ def fetch_posts(termino: str, fecha_desde: str = None, strict_mode: bool = False
     Actúa como un analista de prensa experto para el sindicato SMATA. 
     Tu tarea es filtrar y procesar la siguiente lista de publicaciones encontradas en redes sociales sobre el término '{termino}'.
     
-    Analizá cada publicación y devolvé ÚNICAMENTE un arreglo en formato JSON structured con las publicaciones que tengan relevancia gremial o industrial para el sector automotriz.
+    Analizá cada publicación y devolvé ÚNICAMENTE un arreglo en formato JSON estructurado con las publicaciones que tengan relevancia gremial o industrial para el sector automotriz.
     
     Reglas estrictas de formato:
     1. El campo 'title' DEBE estar completamente en MAYÚSCULAS y resumir la noticia de forma directa (estilo titular de diario).
