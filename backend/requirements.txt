@@ -7,3 +7,5 @@ python-dotenv
 jinja2
 python-multipart
 python-dateutil
+ntscraper
+google-generativeai
