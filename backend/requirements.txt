@@ -1,11 +1,6 @@
 fastapi
-uvicorn
-apify-client
-python-docx
+uvicorn[standard]
 pydantic
-python-dotenv
-jinja2
-python-multipart
-python-dateutil
-ntscraper
 google-generativeai
+ntscraper
+requests
