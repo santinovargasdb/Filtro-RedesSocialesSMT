@@ -86,7 +86,7 @@ export default function PostCard({ post, selected, onToggle }: PostCardProps) {
           display: "flex", alignItems: "center", justifyContent: "center",
           fontSize: "13px", fontWeight: 700, color: net.color, flexShrink: 0,
         }}>
-          {post.author.charAt(0).toUpperCase()}
+          {post.title ? post.title.charAt(0).toUpperCase() : 'X'}
         </div>
         <a
           href={post.author_url}
@@ -95,10 +95,10 @@ export default function PostCard({ post, selected, onToggle }: PostCardProps) {
           onClick={e => e.stopPropagation()}
           style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-primary)", textDecoration: "none" }}
         >
-          {post.author}
+          {post.title ? "Usuario de X" : ""}
         </a>
         <span style={{ fontSize: "11px", color: "var(--text-muted)", marginLeft: "auto" }}>
-          {formatDate(post.date)}
+          {post.date ? formatDate(post.date) : "Reciente"}
         </span>
       </div>
 
@@ -109,29 +109,28 @@ export default function PostCard({ post, selected, onToggle }: PostCardProps) {
         display: "-webkit-box", WebkitLineClamp: 5, WebkitBoxOrient: "vertical",
         overflow: "hidden",
       }}>
-        {post.text}
+        {post.title}
       </p>
 
       {/* Matched terms */}
-      {post.matched_terms.length > 0 && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
-          {post.matched_terms.slice(0, 5).map(term => (
-            <span key={term} style={{
-              fontSize: "11px", padding: "1px 7px", borderRadius: "3px",
-              background: "rgba(76,175,80,0.12)", border: "1px solid rgba(76,175,80,0.25)",
-              color: "var(--smata-green-light)",
-            }}>
-              {term}
-            </span>
-          ))}
-          {post.matched_terms.length > 5 && (
-            <span style={{ fontSize: "11px", color: "var(--text-muted)", alignSelf: "center" }}>
-              +{post.matched_terms.length - 5}
-            </span>
-          )}
-        </div>
-      )}
-
+{post.matched_terms && post.matched_terms.length > 0 && (
+  <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+    {post.matched_terms.slice(0, 5).map(term => (
+      <span key={term} style={{
+        fontSize: "11px", padding: "1px 7px", borderRadius: "3px",
+        background: "rgba(76,175,80,0.12)", border: "1px solid rgba(76,175,80,0.25)",
+        color: "var(--smata-green-light)",
+      }}>
+        {term}
+      </span>
+    ))}
+    {post.matched_terms.length > 5 && (
+      <span style={{ fontSize: "11px", color: "var(--text-muted)", alignSelf: "center" }}>
+        +{post.matched_terms.length - 5}
+      </span>
+    )}
+  </div>
+)}
       {/* Footer link */}
       <div style={{ display: "flex", gap: "12px" }}>
         <a
