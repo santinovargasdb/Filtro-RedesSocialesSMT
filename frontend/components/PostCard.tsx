@@ -109,7 +109,7 @@ export default function PostCard({ post, selected, onToggle }: PostCardProps) {
         display: "-webkit-box", WebkitLineClamp: 5, WebkitBoxOrient: "vertical",
         overflow: "hidden",
       }}>
-        {post.title}
+        {post.text}
       </p>
 
       {/* Matched terms */}
