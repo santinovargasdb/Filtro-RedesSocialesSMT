@@ -47,8 +47,8 @@ pip install -r requirements.txt
 ## Copiar y completar variables de entorno
 copy .env.example .env
 ## Agregar las siguientes claves en .env:
-## SERPAPI_API_KEY=tu_clave_aqui
-## GEMINI_API_KEY=tu_clave_aqui
+### SERPAPI_API_KEY=tu_clave_aqui
+### GEMINI_API_KEY=tu_clave_aqui
 
 python main.py
 ### → http://localhost:8000
