@@ -38,9 +38,7 @@ Monitor institucional de redes sociales para el Departamento de Prensa de SMATA 
 
 ## Setup Local
 
-### Backend
-
-```bash
+### Backend ```bash
 cd backend
 python -m venv venv
 venv\Scripts\activate         # En Windows
