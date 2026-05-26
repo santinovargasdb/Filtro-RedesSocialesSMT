@@ -1,4 +1,5 @@
 import os
+# pyrefly: ignore [missing-import]
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -32,7 +33,7 @@ SMATA_CORE_TERMS = {
 
 # Network Scrapers Configuration (Apify Actor IDs)
 APIFY_ACTORS = {
-    "twitter": "apidojo/twitter-scraper-lite", 
+    "twitter": "apidojo/twitter-scraper-lite",
     "instagram": "apidojo/instagram-scraper",
     "tiktok": "apidojo/tiktok-scraper"
 }
