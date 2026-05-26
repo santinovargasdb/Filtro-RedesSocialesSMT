@@ -5,7 +5,7 @@
       "src": "frontend/package.json",
       "use": "@vercel/next",
       "config": {
-        "distDir": ".next"
+        "zeroConfig": true
       }
     },
     {
