@@ -44,20 +44,20 @@ python -m venv venv
 venv\Scripts\activate         # En Windows
 pip install -r requirements.txt
 
-# Copiar y completar variables de entorno
+## Copiar y completar variables de entorno
 copy .env.example .env
-# Agregar las siguientes claves en .env:
-# SERPAPI_API_KEY=tu_clave_aqui
-# GEMINI_API_KEY=tu_clave_aqui
+## Agregar las siguientes claves en .env:
+## SERPAPI_API_KEY=tu_clave_aqui
+## GEMINI_API_KEY=tu_clave_aqui
 
 python main.py
-# → http://localhost:8000
+### → http://localhost:8000
 Frontend
 Bash
 cd frontend
 npm install
 npm run dev
-# → http://localhost:3000
+### → http://localhost:3000
 Variable de entorno del frontend
 Crear frontend/.env.local:
 
