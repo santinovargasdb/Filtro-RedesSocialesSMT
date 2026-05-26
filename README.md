@@ -1,3 +1,4 @@
+Markdown
 # SMATA Social Monitor v2
 
 Monitor institucional de redes sociales para el Departamento de Prensa de SMATA (sindicato automotriz argentino).
@@ -6,38 +7,34 @@ Monitor institucional de redes sociales para el Departamento de Prensa de SMATA 
 
 | Capa | Tecnología |
 |------|------------|
-| Frontend | Next.js 14 (App Router) → Vercel |
-| Backend | FastAPI (Python) → Railway / Render |
-| Scraping | Apify Python SDK |
-| PDF | WeasyPrint |
-| Secrets | Variables de entorno `.env` |
+| Frontend | Next.js 14 (App Router) → Vercel (Arquitectura Híbrida) |
+| Backend | FastAPI (Python) → Serverless en Vercel (`/api`) |
+| Integraciones | SerpAPI (Búsqueda en X/Twitter) y Google Gemini 2.5 Flash |
+| Secrets | Variables de entorno `.env` en Backend y Vercel |
 
 ## Estructura
 
-```
 /
+├── vercel.json        ← Configuración de ruteo híbrido para Vercel
 ├── frontend/          ← Next.js 14
 │   ├── app/
-│   │   ├── page.tsx           ← pantalla principal
-│   │   ├── layout.tsx         ← layout global SMATA
-│   │   └── globals.css        ← variables CSS branding
-│   ├── components/
-│   │   ├── SearchPanel.tsx    ← sidebar búsqueda
-│   │   ├── PostCard.tsx       ← card de post
-│   │   ├── ResultsGrid.tsx    ← grilla rankeada
-│   │   ├── ReportButton.tsx   ← botón PDF
-│   │   └── ScoreBadge.tsx     ← badge relevancia
-│   └── lib/
-│       └── api.ts             ← fetch al backend
+│   │   ├── page.tsx           ← Pantalla principal del monitor
+│   │   ├── layout.tsx         ← Layout global con identidad SMATA
+│   │   └── globals.css        ← Variables CSS de branding
+│   └── components/
+│       ├── SearchPanel.tsx    ← Sidebar de parámetros de búsqueda
+│       ├── PostCard.tsx       ← Card con el contenido del post analizado
+│       └── ResultsGrid.tsx    ← Grilla de resultados rankeados
 │
 └── backend/           ← FastAPI
-    ├── main.py                ← endpoints
-    ├── apify_fetcher.py       ← integración Apify
-    ├── filters.py             ← scoring semántico
-    ├── pdf_generator.py       ← generación PDF
-    ├── config.py              ← constantes y términos
-    └── requirements.txt
-```
+├── api/
+│   └── index.py           ← Entrada principal adaptada para Vercel Serverless
+├── main.py                ← Endpoints locales
+├── apify_fetcher.py       ← Extractor de posts con SerpAPI y análisis de Gemini
+├── filters.py             ← Scoring semántico y filtrado
+├── config.py              ← Constantes, prompts y términos clave
+└── requirements.txt       ← Dependencias del backend
+
 
 ## Setup Local
 
@@ -46,68 +43,56 @@ Monitor institucional de redes sociales para el Departamento de Prensa de SMATA 
 ```bash
 cd backend
 python -m venv venv
-venv\Scripts\activate         # Windows
+venv\Scripts\activate         # En Windows
 pip install -r requirements.txt
 
 # Copiar y completar variables de entorno
 copy .env.example .env
-# Agregar APIFY_API_KEY en .env
+# Agregar las siguientes claves en .env:
+# SERPAPI_API_KEY=tu_clave_aqui
+# GEMINI_API_KEY=tu_clave_aqui
 
 python main.py
 # → http://localhost:8000
-```
-
-### Frontend
-
-```bash
+Frontend
+Bash
 cd frontend
 npm install
 npm run dev
 # → http://localhost:3000
-```
+Variable de entorno del frontend
+Crear frontend/.env.local:
 
-### Variable de entorno del frontend
-
-Crear `frontend/.env.local`:
-```
 NEXT_PUBLIC_API_URL=http://localhost:8000
-```
+Deploy en Vercel
+Gracias al archivo vercel.json en la raíz, el despliegue del frontend y backend se realiza de forma unificada en un solo paso:
 
-## Deploy
+Conectar el repositorio de GitHub en vercel.com
 
-### Backend → Railway
+Dejar el Root Directory vacío (raíz del proyecto /) para que lea el archivo vercel.json.
 
-1. Conectar repo en [railway.app](https://railway.app)
-2. Configurar **Root Directory** = `backend`
-3. Agregar variable de entorno `APIFY_API_KEY`
-4. Start command: `uvicorn main:app --host 0.0.0.0 --port $PORT`
+En la sección Environment Variables de Vercel, agregar las credenciales requeridas por el backend:
 
-### Frontend → Vercel
+SERPAPI_API_KEY
 
-1. Conectar repo en [vercel.com](https://vercel.com)
-2. Configurar **Root Directory** = `frontend`
-3. Agregar variable de entorno `NEXT_PUBLIC_API_URL=<URL del backend Railway>`
+GEMINI_API_KEY
 
-## API Endpoints
+Darle a Deploy. Vercel mapeará automáticamente el backend bajo las rutas /api/* y el frontend en la raíz.
 
-### `POST /api/search`
-```json
+API Endpoints
+POST /api/search
+Envía los criterios y retorna los posts parseados y puntuados por la IA.
+
+JSON
 {
   "keywords": ["SMATA", "paritaria"],
-  "hashtags": ["sindicato"],
+  "hashtags": ["smata"],
   "accounts": [],
   "networks": ["twitter", "instagram", "tiktok"],
-  "date": "2026-05-14",
   "strict_mode": false
 }
-```
-
-### `POST /api/generate-pdf`
-Body: array de objetos `Post` seleccionados. Retorna PDF binario.
-
-## Modelo Post
-
-```typescript
+Modelo de Datos (Post)
+TypeScript
 {
   id: string,
   network: "twitter" | "instagram" | "tiktok",
@@ -116,17 +101,15 @@ Body: array de objetos `Post` seleccionados. Retorna PDF binario.
   text: string,
   date: string,
   post_url: string,
-  relevance_score: number,   // 0-100
+  relevance_score: number,   // Escala 0-100 calculada por Gemini
   matched_terms: string[]
 }
-```
+Branding SMATA
+Colores corporativos aplicados en la interfaz para mantener la identidad institucional:
 
-## Branding SMATA
-
-```css
+CSS
 --smata-green-dark:  #1B4D2E
 --smata-green-mid:   #2E7D32
 --smata-green-light: #4CAF50
 --smata-green-pale:  #E8F5E9
 --smata-gold:        #FFC107
-```
