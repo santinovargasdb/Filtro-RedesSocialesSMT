@@ -95,7 +95,7 @@ export default function PostCard({ post, selected, onToggle }: PostCardProps) {
           onClick={e => e.stopPropagation()}
           style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-primary)", textDecoration: "none" }}
         >
-          {post.title ? "Usuario de X" : ""}
+          {post.author ? post.author : "Usuario de X"}
         </a>
         <span style={{ fontSize: "11px", color: "var(--text-muted)", marginLeft: "auto" }}>
           {post.date ? formatDate(post.date) : "Reciente"}
