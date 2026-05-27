@@ -4,3 +4,4 @@ pydantic
 google-generativeai
 ntscraper
 requests
+python-dotenv
