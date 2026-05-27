@@ -1,7 +1,8 @@
 fastapi
-uvicorn[standard]
-pydantic
+uvicorn
 google-generativeai
-ntscraper
-requests
+python-docx
+pydantic
 python-dotenv
+jinja2
+python-multipart
