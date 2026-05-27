@@ -86,7 +86,7 @@ export default function PostCard({ post, selected, onToggle }: PostCardProps) {
           display: "flex", alignItems: "center", justifyContent: "center",
           fontSize: "13px", fontWeight: 700, color: net.color, flexShrink: 0,
         }}>
-          {post.title ? post.title.charAt(0).toUpperCase() : 'X'}
+          {(post as any).title ? (post as any).title.charAt(0).toUpperCase() : 'X'}
         </div>
         <a
           href={post.author_url}
