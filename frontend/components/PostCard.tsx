@@ -86,7 +86,7 @@ export default function PostCard({ post, selected, onToggle }: PostCardProps) {
           display: "flex", alignItems: "center", justifyContent: "center",
           fontSize: "13px", fontWeight: 700, color: net.color, flexShrink: 0,
         }}>
-          {(post as any).title ? (post as any).title.charAt(0).toUpperCase() : 'X'}
+          {post.title ? post.title.charAt(0).toUpperCase() : 'X'}
         </div>
         <a
           href={post.author_url}
@@ -95,7 +95,7 @@ export default function PostCard({ post, selected, onToggle }: PostCardProps) {
           onClick={e => e.stopPropagation()}
           style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-primary)", textDecoration: "none" }}
         >
-          {(post as any).title ? "Usuario de X" : ""}
+          {post.title ? "Usuario de X" : ""}
         </a>
         <span style={{ fontSize: "11px", color: "var(--text-muted)", marginLeft: "auto" }}>
           {post.date ? formatDate(post.date) : "Reciente"}
@@ -109,7 +109,7 @@ export default function PostCard({ post, selected, onToggle }: PostCardProps) {
         display: "-webkit-box", WebkitLineClamp: 5, WebkitBoxOrient: "vertical",
         overflow: "hidden",
       }}>
-        {(post as any).title}
+        {post.title}
       </p>
 
       {/* Matched terms */}
