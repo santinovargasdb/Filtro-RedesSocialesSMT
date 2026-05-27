@@ -35,7 +35,11 @@ export default function Home() {
   const handleToggle = useCallback((id: string) => {
     setSelectedIds(prev => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) {
+        next.delete(id); // Si ya estaba seleccionado, lo saca
+      } else {
+        next.add(id);    // Si no estaba, lo agrega al informe de SMATA
+      }
       return next;
     });
   }, []);
