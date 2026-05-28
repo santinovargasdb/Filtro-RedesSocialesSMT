@@ -1,16 +1,14 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export interface Post {
-  id: string;
-  network: "twitter" | "instagram" | "tiktok";
-  author: string;
-  author_url: string;
-  text: string;
-  date: string;
-  post_url: string;
-  video_url?: string;
-  relevance_score: number;
-  matched_terms: string[];
+  id: string; // El frontend lo usa para seleccionar las tarjetas
+  title?: string; // Para el título/usuario que manda SerpAPI
+  text?: string;
+  author?: string;
+  author_url?: string;
+  network: string;
+  relevance_score: number; // Asegurate de que tu backend mande exactamente "relevance_score" o agregá acá cómo lo llame el backend[cite: 10]
+  date?: string;
 }
 
 export interface SearchRequest {
