@@ -134,7 +134,7 @@ export default function PostCard({ post, selected, onToggle }: PostCardProps) {
       {/* Footer link */}
       <div style={{ display: "flex", gap: "12px" }}>
         <a
-          href={post.post_url}
+          href={post.post_url || post.url || "#"}
           target="_blank"
           rel="noopener noreferrer"
           onClick={e => e.stopPropagation()}
