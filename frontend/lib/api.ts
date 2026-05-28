@@ -18,6 +18,9 @@ export interface Post {
   created_at?: string;
 
   matched_terms?: string[];
+
+  post_url?: string;
+  url?: string;
 }
 
 export interface SearchRequest {
