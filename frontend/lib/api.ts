@@ -16,6 +16,8 @@ export interface Post {
   relevance?: number;
   date?: string;
   created_at?: string;
+
+  matched_terms?: string[];
 }
 
 export interface SearchRequest {
