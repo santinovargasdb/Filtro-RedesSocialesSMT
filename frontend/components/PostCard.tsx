@@ -113,7 +113,7 @@ export default function PostCard({ post, selected, onToggle }: PostCardProps) {
       </p>
 
       {/* Matched terms */}
-{post.matched_terms && post.matched_terms.length > 0 && (
+{post.matched_terms && post.matched_terms?.length > 0 && (
   <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
     {post.matched_terms.slice(0, 5).map(term => (
       <span key={term} style={{
