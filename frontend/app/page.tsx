@@ -24,7 +24,7 @@ export default function Home() {
       setPosts(result.posts);
       setSummary(result.summary);
       // Auto-select posts with score >= 50
-      setSelectedIds(new Set(result.posts.filter(p => p.relevance_score >= 50).map(p => p.id)));
+      setSelectedIds(new Set(result.posts.filter(p => (p.relevance_score || p.score || 0) >= 50).map(p => p.id)));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al conectar con el servidor");
     } finally {
