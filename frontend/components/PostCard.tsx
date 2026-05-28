@@ -75,7 +75,7 @@ export default function PostCard({ post, selected, onToggle }: PostCardProps) {
             {selected && <span style={{ fontSize: "11px", color: "white", fontWeight: 700 }}>✓</span>}
           </div>
         </div>
-        <ScoreBadge score={post.relevance_score} />
+        <ScoreBadge score={post.relevance_score || post.score || 0} />
       </div>
 
       {/* Author */}
