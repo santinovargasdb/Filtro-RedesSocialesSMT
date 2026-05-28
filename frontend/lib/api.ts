@@ -21,6 +21,8 @@ export interface Post {
 
   post_url?: string;
   url?: string;
+
+  video_url?: string;
 }
 
 export interface SearchRequest {
