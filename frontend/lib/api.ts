@@ -2,26 +2,20 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export interface Post {
   id: string;
-  network: string;
+  // ── CAMBIÁ ESTA LÍNEA DE ABAJO ──
+  network: "twitter" | "instagram" | "tiktok"; 
   
-  // 1. Soportamos tanto title como text para el cuerpo del post
   title?: string; 
   text?: string;
   content?: string;
-
-  // 2. Soportamos el nombre del usuario
   author?: string;
   author_url?: string;
-  user?: string; // Por si Python manda 'user' en vez de 'author'
-
-  // 3. Soportamos todas las variantes de score para la relevancia
+  user?: string;
   relevance_score?: number;
   score?: number; 
   relevance?: number;
-
-  // 4. Fecha
   date?: string;
-  created_at?: string; // Por si Python usa el formato estándar de Twitter
+  created_at?: string;
 }
 
 export interface SearchRequest {
