@@ -1,14 +1,27 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export interface Post {
-  id: string; // El frontend lo usa para seleccionar las tarjetas
-  title?: string; // Para el título/usuario que manda SerpAPI
+  id: string;
+  network: string;
+  
+  // 1. Soportamos tanto title como text para el cuerpo del post
+  title?: string; 
   text?: string;
+  content?: string;
+
+  // 2. Soportamos el nombre del usuario
   author?: string;
   author_url?: string;
-  network: string;
-  relevance_score: number; // Asegurate de que tu backend mande exactamente "relevance_score" o agregá acá cómo lo llame el backend[cite: 10]
+  user?: string; // Por si Python manda 'user' en vez de 'author'
+
+  // 3. Soportamos todas las variantes de score para la relevancia
+  relevance_score?: number;
+  score?: number; 
+  relevance?: number;
+
+  // 4. Fecha
   date?: string;
+  created_at?: string; // Por si Python usa el formato estándar de Twitter
 }
 
 export interface SearchRequest {
