@@ -1,8 +1,7 @@
 fastapi
 uvicorn
-google-generativeai
 python-docx
 pydantic
 python-dotenv
-jinja2
 python-multipart
+requests

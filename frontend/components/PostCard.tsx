@@ -75,7 +75,7 @@ export default function PostCard({ post, selected, onToggle }: PostCardProps) {
             {selected && <span style={{ fontSize: "11px", color: "white", fontWeight: 700 }}>✓</span>}
           </div>
         </div>
-        <ScoreBadge score={post.relevance_score || post.score || 0} />
+        <ScoreBadge score={post.relevance_score} />
       </div>
 
       {/* Author */}
@@ -86,7 +86,7 @@ export default function PostCard({ post, selected, onToggle }: PostCardProps) {
           display: "flex", alignItems: "center", justifyContent: "center",
           fontSize: "13px", fontWeight: 700, color: net.color, flexShrink: 0,
         }}>
-          {post.title ? post.title.charAt(0).toUpperCase() : 'X'}
+          {(post.author || "?").charAt(0).toUpperCase()}
         </div>
         <a
           href={post.author_url}
@@ -95,7 +95,7 @@ export default function PostCard({ post, selected, onToggle }: PostCardProps) {
           onClick={e => e.stopPropagation()}
           style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-primary)", textDecoration: "none" }}
         >
-          {post.title ? "Usuario de X" : ""}
+          {post.author ? `@${post.author}` : ""}
         </a>
         <span style={{ fontSize: "11px", color: "var(--text-muted)", marginLeft: "auto" }}>
           {post.date ? formatDate(post.date) : "Reciente"}
@@ -109,7 +109,7 @@ export default function PostCard({ post, selected, onToggle }: PostCardProps) {
         display: "-webkit-box", WebkitLineClamp: 5, WebkitBoxOrient: "vertical",
         overflow: "hidden",
       }}>
-        {post.title || post.text || post.content || "Sin contenido"}
+        {post.text || "Sin contenido"}
       </p>
 
       {/* Matched terms */}
@@ -134,7 +134,7 @@ export default function PostCard({ post, selected, onToggle }: PostCardProps) {
       {/* Footer link */}
       <div style={{ display: "flex", gap: "12px" }}>
         <a
-          href={post.post_url || post.url || "#"}
+          href={post.post_url || "#"}
           target="_blank"
           rel="noopener noreferrer"
           onClick={e => e.stopPropagation()}

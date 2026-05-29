@@ -2,27 +2,16 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export interface Post {
   id: string;
-  // ── CAMBIÁ ESTA LÍNEA DE ABAJO ──
-  network: "twitter" | "instagram" | "tiktok"; 
-  
-  title?: string; 
-  text?: string;
-  content?: string;
-  author?: string;
-  author_url?: string;
-  user?: string;
-  relevance_score?: number;
-  score?: number; 
-  relevance?: number;
-  date?: string;
-  created_at?: string;
-
-  matched_terms?: string[];
-
-  post_url?: string;
-  url?: string;
-
-  video_url?: string;
+  network: "twitter" | "instagram" | "tiktok";
+  author: string;
+  author_url: string;
+  text: string;
+  date: string;
+  post_url: string;
+  relevance_score: number;
+  relevance_level: "alta" | "media" | "baja";
+  matched_terms: string[];
+  video_url: string | null;
 }
 
 export interface SearchRequest {
@@ -53,18 +42,18 @@ export async function searchPosts(req: SearchRequest): Promise<SearchResponse> {
   return res.json();
 }
 
-export async function generatePdf(posts: Post[]): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/generate-pdf`, {
+export async function generateDocx(posts: Post[]): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/generate-docx`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(posts),
+    body: JSON.stringify({ posts }),
   });
-  if (!res.ok) throw new Error("PDF generation failed");
+  if (!res.ok) throw new Error("DOCX generation failed");
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `informe_smata_${new Date().toISOString().split("T")[0]}.pdf`;
+  a.download = `informe_smata_${new Date().toISOString().split("T")[0]}.docx`;
   a.click();
   URL.revokeObjectURL(url);
 }
