@@ -13,16 +13,100 @@ SERPAPI_URL = "https://serpapi.com/search"
 _CACHE_TTL_SECONDS = 600  # 10 minutos
 _CACHE: dict[tuple, tuple[float, list[dict]]] = {}
 
+# ── Redes soportadas ──────────────────────────────────────────────────────────
+SUPPORTED_NETWORKS = ("twitter", "instagram", "tiktok")
+
+_SITE_BY_NETWORK = {
+    "twitter": "site:x.com OR site:twitter.com",
+    "instagram": "site:instagram.com",
+    "tiktok": "site:tiktok.com",
+}
+
+_NETWORK_PROMPT_LABEL = {
+    "twitter": "X (Twitter)",
+    "instagram": "Instagram",
+    "tiktok": "TikTok",
+}
+
+# ── Gemini: modelos en cascada y límite por red ───────────────────────────────
+# Si el primer modelo devuelve 429 (rate limit), 503 (saturación) o 404
+# (modelo no disponible en esta key/región), se reintenta con el siguiente.
+# Cada modelo Flash tiene cuotas independientes, así que el fallback ayuda
+# cuando un modelo se queda sin créditos diarios.
+GEMINI_MODELS = (
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-2.0-flash",
+    "gemini-flash-latest",
+)
+GEMINI_RETRY_STATUSES = (429, 503, 404)
+# Tope de resultados por red que se mandan a Gemini para reducir tokens
+# y bajar la chance de tocar el rate limit con multi-red activo.
+GEMINI_MAX_PER_NETWORK = 8
+
+# ── Regex de URLs por red ─────────────────────────────────────────────────────
 _TWITTER_URL_RE = re.compile(r"(?:x|twitter)\.com/([^/?#]+)/status/(\d+)", re.IGNORECASE)
+_INSTAGRAM_USER_POST_RE = re.compile(r"instagram\.com/([^/?#]+)/(p|reel|tv)/([^/?#]+)", re.IGNORECASE)
+_INSTAGRAM_POST_RE = re.compile(r"instagram\.com/(?:p|reel|tv)/([^/?#]+)", re.IGNORECASE)
+_TIKTOK_URL_RE = re.compile(r"tiktok\.com/@([^/?#]+)/video/(\d+)", re.IGNORECASE)
+
+# Paths de IG que parecen "user" en la URL pero no lo son
+_IG_RESERVED_PATHS = {
+    "p", "reel", "tv", "explore", "accounts", "direct",
+    "stories", "web", "developer", "about", "legal",
+}
 
 
 def _parse_twitter_url(url: str) -> tuple[str, str, str]:
-    """Devuelve (author, author_url, post_id) extraídos de un URL de X/Twitter."""
     m = _TWITTER_URL_RE.search(url or "")
     if not m:
         return "", "", url or ""
     user, post_id = m.group(1), m.group(2)
     return user, f"https://x.com/{user}", post_id
+
+
+def _parse_instagram_url(url: str) -> tuple[str, str, str]:
+    m = _INSTAGRAM_USER_POST_RE.search(url or "")
+    if m and m.group(1).lower() not in _IG_RESERVED_PATHS:
+        user, post_id = m.group(1), m.group(3)
+        return user, f"https://instagram.com/{user}", post_id
+    m = _INSTAGRAM_POST_RE.search(url or "")
+    if m:
+        return "", "", m.group(1)
+    return "", "", url or ""
+
+
+def _parse_tiktok_url(url: str) -> tuple[str, str, str]:
+    m = _TIKTOK_URL_RE.search(url or "")
+    if not m:
+        return "", "", url or ""
+    user, video_id = m.group(1), m.group(2)
+    return user, f"https://tiktok.com/@{user}", video_id
+
+
+def _detect_network_from_url(url: str) -> str | None:
+    u = (url or "").lower()
+    if "instagram.com/" in u:
+        return "instagram"
+    if "tiktok.com/" in u:
+        return "tiktok"
+    if "x.com/" in u or "twitter.com/" in u:
+        return "twitter"
+    return None
+
+
+def _parse_post_url(url: str, hint_network: str | None = None) -> tuple[str, str, str, str]:
+    """Devuelve (network, author, author_url, post_id). Usa hint_network si la URL no resuelve."""
+    network = _detect_network_from_url(url) or hint_network or "twitter"
+    if network == "twitter":
+        a, au, pid = _parse_twitter_url(url)
+    elif network == "instagram":
+        a, au, pid = _parse_instagram_url(url)
+    elif network == "tiktok":
+        a, au, pid = _parse_tiktok_url(url)
+    else:
+        a, au, pid = "", "", url or ""
+    return network, a, au, pid
 
 
 def _level_from_score(score: int) -> str:
@@ -64,7 +148,7 @@ def _find_matched_terms(text: str, keywords: list[str]) -> list[str]:
 
 
 def _build_accounts_filter(accounts: list[str] | None) -> str:
-    """Devuelve '(from:user1 OR from:user2)' o '' si no hay cuentas válidas."""
+    """'(from:user1 OR from:user2)' — operador específico de X/Twitter."""
     if not accounts:
         return ""
     clean = [a.lstrip("@").strip() for a in accounts if a and a.strip()]
@@ -73,25 +157,59 @@ def _build_accounts_filter(accounts: list[str] | None) -> str:
     return "(" + " OR ".join(f"from:{u}" for u in clean) + ")"
 
 
+def _clean_serp_results(items: list[dict]) -> list[dict]:
+    """
+    Limpia los resultados crudos de SerpAPI antes de mandarlos a Gemini:
+    - descarta items sin snippet ni title (no hay texto que analizar)
+    - dedupea por URL exacta
+    - dedupea por snippet exacto (distinto URL, mismo contenido)
+    Reduce tokens del prompt y baja la chance de tocar el rate limit.
+    """
+    seen_urls: set[str] = set()
+    seen_text: set[str] = set()
+    out: list[dict] = []
+    for it in items:
+        url = (it.get("url") or "").strip()
+        snippet = (it.get("snippet") or "").strip()
+        title = (it.get("title") or "").strip()
+        if not snippet and not title:
+            continue
+        if url and url in seen_urls:
+            continue
+        text_key = snippet or title
+        if text_key in seen_text:
+            continue
+        if url:
+            seen_urls.add(url)
+        seen_text.add(text_key)
+        out.append(it)
+    return out
+
+
 def _search_with_serpapi(
     termino: str,
+    network: str = "twitter",
     max_results: int = 10,
     fecha_desde: str | None = None,
     accounts: list[str] | None = None,
 ) -> list[dict] | None:
     """
-    Realiza una búsqueda en Google vía SerpAPI filtrando resultados de X/Twitter.
-    Devuelve lista de dicts con: title, snippet, url, date.
-    Retorna None ante errores de red/upstream (para distinguir de 'cero resultados legítimos').
+    Busca en Google vía SerpAPI con `site:` correspondiente a la red.
+    Devuelve lista de dicts {title, snippet, url, date}, [] si no hay resultados,
+    o None ante errores de red/upstream (para no cachear vacíos espurios).
     """
     if not SERPAPI_API_KEY:
         print("ERROR: SERPAPI_API_KEY no configurada en las variables de entorno.")
         return None
 
-    accounts_filter = _build_accounts_filter(accounts)
-    query_parts = ["site:x.com OR site:twitter.com", termino]
-    if accounts_filter:
-        query_parts.append(accounts_filter)
+    site_filter = _SITE_BY_NETWORK.get(network, _SITE_BY_NETWORK["twitter"])
+    query_parts = [site_filter, termino]
+    # (from:user) es operador propio de X — IG/TikTok no tienen equivalente directo
+    # vía Google search, así que para esas redes ignoramos el filtro por cuenta.
+    if network == "twitter":
+        accounts_filter = _build_accounts_filter(accounts)
+        if accounts_filter:
+            query_parts.append(accounts_filter)
     query = " ".join(query_parts)
     params = {
         "engine": "google",
@@ -110,25 +228,67 @@ def _search_with_serpapi(
         response.raise_for_status()
         data = response.json()
     except requests.exceptions.RequestException as e:
-        print(f"ERROR: Fallo en la petición a SerpAPI: {e}")
+        print(f"ERROR: Fallo en la petición a SerpAPI[{network}]: {e}")
         return None
 
     organic_results = data.get("organic_results", [])
     if not organic_results:
-        print(f"DEBUG: SerpAPI no devolvió resultados orgánicos para '{termino}'.")
+        print(f"DEBUG: SerpAPI[{network}] sin resultados orgánicos para '{termino}'.")
         return []
 
-    results = []
+    raw_results = []
     for item in organic_results[:max_results]:
-        results.append({
+        raw_results.append({
             "title": item.get("title", ""),
             "snippet": item.get("snippet", ""),
             "url": item.get("link", ""),
             "date": item.get("date", ""),
         })
-
-    print(f"DEBUG: SerpAPI devolvió {len(results)} resultados para '{termino}'.")
+    results = _clean_serp_results(raw_results)
+    if len(results) != len(raw_results):
+        print(f"DEBUG: SerpAPI[{network}] limpieza: {len(raw_results)} -> {len(results)} (vacíos/duplicados descartados)")
+    print(f"DEBUG: SerpAPI[{network}] devolvió {len(results)} resultados útiles para '{termino}'.")
     return results
+
+
+def _call_gemini_model(model: str, api_key: str, prompt: str) -> tuple[list | None, int | None]:
+    """
+    Llama a un modelo Gemini específico. Devuelve (lista_scored, http_status_si_error).
+    - (lista, None): éxito
+    - (None, status): error HTTP con status code (puede disparar fallback)
+    - (None, None): error de otro tipo (red, parseo) — no tiene sentido fallback de modelo
+    """
+    url = f"https://generativelanguage.googleapis.com/v1/models/{model}:generateContent"
+    headers = {
+        "Content-Type": "application/json",
+        "x-goog-api-key": api_key,
+    }
+    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+    try:
+        response = requests.post(url, headers=headers, json=payload, timeout=45)
+        response.raise_for_status()
+        res_data = response.json()
+        raw = res_data["candidates"][0]["content"]["parts"][0]["text"].strip()
+        raw = raw.replace("```json", "").replace("```", "").strip()
+        scored = json.loads(raw)
+        if not isinstance(scored, list):
+            print(f"ERROR Gemini[{model}]: respuesta no es lista JSON")
+            return None, None
+        return scored, None
+    except requests.exceptions.HTTPError as e:
+        status = e.response.status_code if e.response is not None else None
+        body_msg = ""
+        if e.response is not None:
+            try:
+                body = e.response.json()
+                body_msg = body.get("error", {}).get("message", "") or str(body)[:200]
+            except Exception:
+                body_msg = (e.response.text or "")[:200]
+        print(f"ERROR Gemini[{model}]: HTTP {status} — {body_msg}")
+        return None, status
+    except Exception as e:
+        print(f"ERROR Gemini[{model}]: {e}")
+        return None, None
 
 
 def _process_with_gemini(
@@ -136,24 +296,37 @@ def _process_with_gemini(
     termino: str,
     strict_mode: bool,
     keywords: list[str],
-) -> list[dict]:
+    network_hint: str = "twitter",
+) -> list[dict] | None:
     """
-    Pide a Gemini scores de relevancia y mapea cada resultado al shape PostOut:
-    {id, network, author, author_url, text, date, post_url,
-     relevance_score, relevance_level, matched_terms, video_url}.
+    Pide a Gemini scores de relevancia y mapea cada resultado al shape PostOut.
+    Usa network_hint como fallback cuando la URL no permite detectar la red.
+    Retorna None ante errores upstream (no autenticación, 503, parseo) para que
+    fetch_posts no cachee un vacío espurio. [] indica vacío legítimo.
+
+    Aplica:
+    - Tope GEMINI_MAX_PER_NETWORK al lote enviado (reduce tokens y rate limit).
+    - Cascada de modelos GEMINI_MODELS con fallback en 429/503.
     """
     api_key = os.getenv("GEMINI_API_KEY", "")
     if not api_key:
         print("ERROR: GEMINI_API_KEY no configurada.")
-        return []
+        return None
 
-    resultados_text = json.dumps(resultados, ensure_ascii=False, indent=2)
+    # Tope por red: los resultados ya vienen ordenados por relevancia de Google,
+    # así que quedarnos con los primeros N es razonable para un reporte de tendencias.
+    resultados_limitados = resultados[:GEMINI_MAX_PER_NETWORK]
+    if len(resultados_limitados) < len(resultados):
+        print(f"DEBUG Gemini[{network_hint}]: lote reducido {len(resultados)} -> {len(resultados_limitados)}")
+
+    network_label = _NETWORK_PROMPT_LABEL.get(network_hint, network_hint or "X (Twitter)")
+    resultados_text = json.dumps(resultados_limitados, ensure_ascii=False, indent=2)
     strict_note = "Solo incluí posts con score >= 50." if strict_mode else "Incluí todos los posts."
 
     prompt = f"""Sos un asistente de análisis de redes sociales para el sindicato SMATA (sector automotriz argentino).
-Te paso resultados reales de Google sobre publicaciones en X (Twitter) relacionadas con el término: "{termino}".
+Te paso resultados reales de Google sobre publicaciones en {network_label} relacionadas con el término: "{termino}".
 
-Cada resultado tiene: "title" (título del resultado en Google), "snippet" (extracto del tweet/post), "url" (link directo), "date" (fecha si está disponible).
+Cada resultado tiene: "title" (título del resultado en Google), "snippet" (extracto del post), "url" (link directo), "date" (fecha si está disponible).
 
 Tu tarea:
 1. Analizá cada resultado y determiná si es relevante para SMATA y el sector automotriz/sindical argentino.
@@ -171,28 +344,24 @@ Devolvé ÚNICAMENTE un JSON válido, sin texto adicional ni bloques de código.
 Resultados de SerpAPI:
 {resultados_text}"""
 
-    url = "https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent"
-    headers = {
-        "Content-Type": "application/json",
-        "x-goog-api-key": api_key,
-    }
-    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+    # Cascada de modelos: el primero que responda OK gana. Solo se intenta el
+    # próximo si el anterior fue 429 (rate limit) o 503 (saturación).
+    scored: list | None = None
+    for idx, model in enumerate(GEMINI_MODELS):
+        scored, status = _call_gemini_model(model, api_key, prompt)
+        if scored is not None:
+            if idx > 0:
+                print(f"DEBUG Gemini[{network_hint}]: fallback EXITOSO con {model}")
+            break
+        if status not in GEMINI_RETRY_STATUSES:
+            break
+        if idx + 1 < len(GEMINI_MODELS):
+            print(f"DEBUG Gemini[{network_hint}]: HTTP {status} en {model}, probando fallback {GEMINI_MODELS[idx + 1]}")
 
-    try:
-        response = requests.post(url, headers=headers, json=payload, timeout=45)
-        response.raise_for_status()
-        res_data = response.json()
-        raw = res_data["candidates"][0]["content"]["parts"][0]["text"].strip()
-        raw = raw.replace("```json", "").replace("```", "").strip()
-        scored = json.loads(raw)
-        if not isinstance(scored, list):
-            return []
-    except Exception as e:
-        print(f"ERROR procesando con Gemini directo: {e}")
-        return []
+    if scored is None:
+        return None
 
-    # Index original SerpAPI items por URL para enriquecer cada post
-    by_url = {r.get("url", ""): r for r in resultados}
+    by_url = {r.get("url", ""): r for r in resultados_limitados}
 
     posts: list[dict] = []
     for item in scored:
@@ -205,11 +374,11 @@ Resultados de SerpAPI:
         src = by_url.get(post_url, {})
         snippet = src.get("snippet", "") or src.get("title", "")
         date = src.get("date", "") or ""
-        author, author_url, post_id = _parse_twitter_url(post_url)
+        network, author, author_url, post_id = _parse_post_url(post_url, hint_network=network_hint)
 
         posts.append({
             "id": post_id or post_url,
-            "network": "twitter",
+            "network": network,
             "author": author,
             "author_url": author_url,
             "text": snippet,
@@ -230,11 +399,16 @@ def fetch_posts(
     strict_mode: bool = False,
     keywords: list[str] | None = None,
     accounts: list[str] | None = None,
+    networks: list[str] | None = None,
 ) -> list[dict]:
     """
-    Función principal. Devuelve lista de dicts compatibles con el modelo PostOut.
+    Función principal. Itera las redes solicitadas y mergea resultados.
     """
-    print(f"DEBUG: fetch_posts llamado con termino='{termino}', strict_mode={strict_mode}")
+    nets = [n for n in (networks or []) if n in SUPPORTED_NETWORKS]
+    if not nets:
+        nets = ["twitter"]  # fallback seguro si el front no manda nada válido
+
+    print(f"DEBUG: fetch_posts termino='{termino}' redes={nets} strict_mode={strict_mode}")
 
     cache_key = (
         termino,
@@ -242,6 +416,7 @@ def fetch_posts(
         strict_mode,
         tuple(sorted(keywords or [])),
         tuple(sorted(accounts or [])),
+        tuple(sorted(nets)),
     )
     cached = _CACHE.get(cache_key)
     if cached is not None:
@@ -251,36 +426,52 @@ def fetch_posts(
             return data
         del _CACHE[cache_key]
 
-    resultados_crudos = _search_with_serpapi(
-        termino, max_results=10, fecha_desde=fecha_desde, accounts=accounts
-    )
-    if resultados_crudos is None:
-        print("DEBUG: SerpAPI falló (error de red/upstream). No se cachea, reintentar.")
-        return []
-    print(f"DEBUG: {len(resultados_crudos)} resultados obtenidos de SerpAPI")
+    all_posts: list[dict] = []
+    any_upstream_error = False
+    total_serp_results = 0
 
-    posts_procesados = _process_with_gemini(
-        resultados_crudos, termino, strict_mode, keywords or []
-    )
-    print(f"DEBUG: {len(posts_procesados)} posts devueltos tras análisis de Gemini")
+    for net in nets:
+        resultados = _search_with_serpapi(
+            termino,
+            network=net,
+            max_results=10,
+            fecha_desde=fecha_desde,
+            accounts=accounts,
+        )
+        if resultados is None:
+            any_upstream_error = True
+            continue
+        if not resultados:
+            continue
+        total_serp_results += len(resultados)
+        posts = _process_with_gemini(
+            resultados, termino, strict_mode, keywords or [], network_hint=net
+        )
+        if posts is None:
+            any_upstream_error = True
+            continue
+        all_posts.extend(posts)
+
+    print(f"DEBUG: total posts pre-dedupe = {len(all_posts)} (sobre {total_serp_results} resultados SerpAPI, upstream_error={any_upstream_error})")
 
     seen_urls: set[str] = set()
     deduped: list[dict] = []
-    for p in posts_procesados:
+    for p in all_posts:
         url = p.get("post_url") or ""
         if url and url in seen_urls:
             continue
         if url:
             seen_urls.add(url)
         deduped.append(p)
-    if len(deduped) != len(posts_procesados):
-        print(f"DEBUG: dedupe quitó {len(posts_procesados) - len(deduped)} duplicados por post_url")
-    posts_procesados = deduped
+    if len(deduped) != len(all_posts):
+        print(f"DEBUG: dedupe quitó {len(all_posts) - len(deduped)} duplicados por post_url")
+    all_posts = deduped
 
-    # No cachear vacíos espurios: si SerpAPI trajo resultados pero quedamos en 0 posts,
-    # asumimos que Gemini falló (503, rate-limit, etc.) y dejamos pasar el próximo intento.
-    if not posts_procesados and resultados_crudos:
-        print("DEBUG: no se cachea (resultado vacío con SerpAPI no vacío — probable fallo upstream)")
+    # Política de cache: no cachear si SerpAPI o Gemini fallaron en cualquier red.
+    # Así un reintento posterior puede recuperar las redes faltantes en vez de
+    # quedar pegado con un resultado parcial durante 10 min.
+    if any_upstream_error:
+        print("DEBUG: no se cachea (error upstream en alguna red — SerpAPI o Gemini)")
     else:
-        _CACHE[cache_key] = (time.time(), posts_procesados)
-    return posts_procesados
+        _CACHE[cache_key] = (time.time(), all_posts)
+    return all_posts

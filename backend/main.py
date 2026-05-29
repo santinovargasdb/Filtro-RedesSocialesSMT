@@ -71,6 +71,7 @@ async def search_endpoint(request: SearchRequest):
             strict_mode=request.strict_mode,
             keywords=request.keywords,
             accounts=request.accounts,
+            networks=request.networks,
         )
 
         posts = [PostOut(**p) for p in raw]
