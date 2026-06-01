@@ -103,19 +103,22 @@ def _parse_tiktok_url(url: str) -> tuple[str, str, str]:
     return user, f"https://tiktok.com/@{user}", video_id
 
 
-def _tiktok_search_fallback_url(author: str) -> str | None:
-    """Link de búsqueda seguro dentro de TikTok para el autor + 'smata'.
+def _tiktok_search_fallback_url(author: str, keyword: str) -> str | None:
+    """Link de búsqueda seguro dentro de TikTok para el autor + la keyword real.
 
     SerpAPI a veces devuelve la URL del último video del creador en lugar del
     post real que matcheó en texto. En vez de confiar en esa URL distorsionada,
     apuntamos a una búsqueda dentro de la plataforma que filtra por el usuario y
-    el contexto SMATA, así Prensa llega al video correcto en un clic.
+    el término buscado, así Prensa llega al video correcto en un clic.
+    La keyword es dinámica (el término del request), no un valor fijo.
     Devuelve None si no hay username del cual armar la búsqueda.
     """
     clean = (author or "").lstrip("@").strip()
     if not clean:
         return None
-    q = quote(f"@{clean} smata", safe="@")
+    kw = (keyword or "").strip()
+    query = f"@{clean} {kw}".strip() if kw else f"@{clean}"
+    q = quote(query, safe="@")
     return f"https://www.tiktok.com/search?q={q}"
 
 
@@ -437,7 +440,7 @@ Resultados de SerpAPI:
         # informe. Si no hay username, conservamos la URL original como está.
         link = post_url
         if network == "tiktok":
-            fallback = _tiktok_search_fallback_url(author)
+            fallback = _tiktok_search_fallback_url(author, termino)
             if fallback:
                 link = fallback
 
