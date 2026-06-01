@@ -52,7 +52,14 @@ class PostOut(BaseModel):
 
 @app.get("/")
 def read_root():
-    return {"status": "ok", "message": "Backend SMATA Social Monitor corriendo"}
+    # RENDER_GIT_COMMIT lo inyecta Render con el SHA del deploy en curso; en local
+    # no existe, así que cae en "dev". Sirve para confirmar qué versión está viva.
+    commit = os.environ.get("RENDER_GIT_COMMIT", "dev")
+    return {
+        "status": "ok",
+        "message": "Backend SMATA Social Monitor corriendo",
+        "commit": commit[:7] if commit else "dev",
+    }
 
 
 @app.post("/api/search")
