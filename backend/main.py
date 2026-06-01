@@ -14,28 +14,14 @@ import os
 
 app = FastAPI()
 
-# Orígenes permitidos explícitos. Se pueden sumar más por env (ALLOWED_ORIGINS,
-# separados por coma). Incluimos el dominio de producción actual de Vercel y los
-# de desarrollo local.
-_DEFAULT_ORIGINS = [
-    "http://localhost:3000",
-    "https://filtro-redes-sociales-mx4xk14du-santinovargasdbs-projects.vercel.app",
-]
-_allowed_origins_env = os.environ.get("ALLOWED_ORIGINS", "")
-_env_origins = [o.strip() for o in _allowed_origins_env.split(",") if o.strip()]
-allowed_origins = list(dict.fromkeys(_DEFAULT_ORIGINS + _env_origins))
-
-# Regex para cubrir cualquier subdominio de *.vercel.app (los previews y deploys
-# generan un subdominio distinto cada vez). Con allow_origin_regex Starlette
-# refleja el origin concreto, lo que es compatible con allow_credentials=True
-# (cosa que allow_origins=["*"] NO sería).
-_VERCEL_ORIGIN_REGEX = r"https://([a-z0-9-]+\.)*vercel\.app"
-
+# CORS abierto a cualquier origen. Vercel genera un subdominio distinto en cada
+# preview/deploy, así que en esta etapa de pruebas de Prensa permitimos todos los
+# orígenes con el comodín. El comodín solo es válido con allow_credentials=False
+# (que es nuestro caso: el frontend no manda cookies ni auth en el fetch).
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
-    allow_origin_regex=_VERCEL_ORIGIN_REGEX,
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
