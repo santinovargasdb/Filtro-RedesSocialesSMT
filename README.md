@@ -1,7 +1,7 @@
 Markdown
-# SMATA Social Monitor v2
+# Monitor de Medios SMT
 
-Monitor institucional de redes sociales para el Departamento de Prensa de SMATA (sindicato automotriz argentino).
+Monitor institucional de medios y redes sociales para el Departamento de Prensa de SMATA (sindicato automotriz argentino).
 
 ## Stack Técnico
 

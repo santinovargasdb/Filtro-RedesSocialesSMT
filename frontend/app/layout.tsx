@@ -3,8 +3,8 @@ import "./globals.css";
 import ThemeToggle from "@/components/ThemeToggle";
 
 export const metadata: Metadata = {
-  title: "SMATA Social Monitor v2",
-  description: "Monitor institucional de redes sociales — Departamento de Prensa SMATA",
+  title: "Monitor de Medios SMT",
+  description: "Monitor institucional de medios y redes sociales — Departamento de Prensa SMATA",
 };
 
 // Aplica el tema guardado ANTES del primer paint para evitar el flash claro→oscuro.
@@ -43,10 +43,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             }}>SM</div>
             <div>
               <div style={{ fontWeight: 700, fontSize: "15px", letterSpacing: "0.02em", color: "white" }}>
-                SMATA Social Monitor
+                Monitor de Medios SMT
               </div>
               <div style={{ fontSize: "11px", color: "rgba(255,255,255,0.6)", fontWeight: 400 }}>
-                Departamento de Prensa · Monitor v2
+                Departamento de Prensa · SMATA
               </div>
             </div>
           </div>

@@ -98,7 +98,7 @@ export default function SearchPanel({ onSearch, loading }: SearchPanelProps) {
 
       <hr className="divider" />
 
-      <TagInput label="Keywords" placeholder="Ej: SMATA, paritaria..." tags={keywords} setTags={setKeywords} />
+      <TagInput label="Palabras clave" placeholder="Ej: SMATA, paritaria..." tags={keywords} setTags={setKeywords} />
       <TagInput label="Hashtags" placeholder="#sindicato, #automotriz..." tags={hashtags} setTags={setHashtags} prefix="#" />
       <TagInput label="Cuentas (opcional)" placeholder="@smataoficial..." tags={accounts} setTags={setAccounts} prefix="@" />
 

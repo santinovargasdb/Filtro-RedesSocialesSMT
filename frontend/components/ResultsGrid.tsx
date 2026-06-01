@@ -70,7 +70,7 @@ export default function ResultsGrid({ posts, selectedIds, onToggle, loading, sum
         </div>
         <div style={{ fontSize: "13px" }}>
           {hasSearched
-            ? "Probá con otra keyword, sumá redes o apagá el Modo SMATA para un monitoreo más amplio."
+            ? "Probá con otra palabra clave, sumá redes o apagá el Modo SMATA para un monitoreo más amplio."
             : "Los resultados rankeados aparecerán aquí"}
         </div>
       </div>
