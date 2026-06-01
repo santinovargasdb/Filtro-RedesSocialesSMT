@@ -70,6 +70,25 @@ _INSTAGRAM_USER_POST_RE = re.compile(r"instagram\.com/([^/?#]+)/(p|reel|tv)/([^/
 _INSTAGRAM_POST_RE = re.compile(r"instagram\.com/(?:p|reel|tv)/([^/?#]+)", re.IGNORECASE)
 _TIKTOK_URL_RE = re.compile(r"tiktok\.com/@([^/?#]+)/video/(\d+)", re.IGNORECASE)
 
+# Patrones que identifican un deep-link a un POST PUNTUAL (no a un perfil ni a la
+# home de la plataforma). Si la URL original ya matchea, se respeta tal cual.
+_SPECIFIC_POST_PATTERNS = {
+    "twitter": re.compile(r"/status/\d+", re.IGNORECASE),
+    "instagram": re.compile(r"/(?:p|reel|tv)/[^/?#]+", re.IGNORECASE),
+    "tiktok": re.compile(r"/video/\d+", re.IGNORECASE),
+}
+
+
+def _is_specific_post_url(network: str, url: str) -> bool:
+    """True si la URL apunta a un post puntual indexado (no perfil ni home).
+
+    Instagram: /p/, /reel/, /tv/ · TikTok: /video/ · X/Twitter: /status/.
+    """
+    if not url:
+        return False
+    pat = _SPECIFIC_POST_PATTERNS.get(network)
+    return bool(pat and pat.search(url))
+
 # Paths de IG que parecen "user" en la URL pero no lo son
 _IG_RESERVED_PATHS = {
     "p", "reel", "tv", "explore", "accounts", "direct",
@@ -484,12 +503,13 @@ Resultados de SerpAPI:
         date = src.get("date", "") or ""
         network, author, author_url, post_id = _parse_post_url(post_url, hint_network=network_hint)
 
-        # TikTok: la URL de video que manda SerpAPI suele redirigir al último
-        # video del creador, no al post que matcheó. Reemplazamos post_url por
-        # una búsqueda interna segura (@usuario + smata) sin tocar el texto del
-        # informe. Si no hay username, conservamos la URL original como está.
+        # Prioridad ABSOLUTA al post real: si la URL ya es un deep-link válido al
+        # posteo (/p/, /reel/, /tv/ en IG; /video/ en TikTok; /status/ en X), la
+        # respetamos sin pisarla. Solo cuando la URL está vacía, rota, apunta a la
+        # home/perfil o no se pudo extraer el autor ("?"), caemos al fallback de
+        # TikTok (perfil del creador o búsqueda global por keyword).
         link = post_url
-        if network == "tiktok":
+        if not _is_specific_post_url(network, post_url) and network == "tiktok":
             fallback = _tiktok_search_fallback_url(author, termino)
             if fallback:
                 link = fallback
