@@ -104,21 +104,36 @@ def _parse_tiktok_url(url: str) -> tuple[str, str, str]:
 
 
 def _tiktok_search_fallback_url(author: str, keyword: str) -> str | None:
-    """Link de búsqueda seguro dentro de TikTok para el autor + la keyword real.
+    """Link de búsqueda seguro dentro de TikTok, a prueba de fallos.
 
     SerpAPI a veces devuelve la URL del último video del creador en lugar del
     post real que matcheó en texto. En vez de confiar en esa URL distorsionada,
-    apuntamos a una búsqueda dentro de la plataforma que filtra por el usuario y
-    el término buscado, así Prensa llega al video correcto en un clic.
-    La keyword es dinámica (el término del request), no un valor fijo.
-    Devuelve None si no hay username del cual armar la búsqueda.
+    apuntamos a una búsqueda dentro de la plataforma. Lógica por niveles:
+
+    1. Autor + keyword  -> búsqueda dirigida  q=@usuario keyword
+    2. Solo keyword     -> búsqueda global    q=keyword   (cuando SerpAPI no pudo
+                           extraer el autor: viene vacío o como "?")
+    3. Solo autor       -> q=@usuario
+    4. Nada de lo anterior -> None.
+
+    NUNCA devuelve la URL base "tiktok.com" sin parámetros (eso mandaba al usuario
+    al FYP con videos random). El caller usa None para conservar la URL original.
     """
-    clean = (author or "").lstrip("@").strip()
-    if not clean:
+    clean_author = (author or "").lstrip("@").strip()
+    # SerpAPI deja "?" (u otros placeholders) cuando no logró extraer el autor.
+    if clean_author in ("", "?", "-"):
+        clean_author = ""
+    clean_kw = (keyword or "").strip()
+
+    if clean_author and clean_kw:
+        q = quote(f"@{clean_author} {clean_kw}", safe="@")
+    elif clean_kw:
+        q = quote(clean_kw)
+    elif clean_author:
+        q = quote(f"@{clean_author}", safe="@")
+    else:
+        # Sin autor ni keyword no hay forma de armar una búsqueda con sentido.
         return None
-    kw = (keyword or "").strip()
-    query = f"@{clean} {kw}".strip() if kw else f"@{clean}"
-    q = quote(query, safe="@")
     return f"https://www.tiktok.com/search?q={q}"
 
 
