@@ -6,6 +6,12 @@ import datetime
 import requests
 from urllib.parse import quote
 
+
+class UpstreamUnavailableError(Exception):
+    """SerpAPI o Gemini fallaron (rate limit / cuota / red) y no quedó ningún
+    resultado utilizable. Permite al endpoint devolver un 503 con mensaje claro
+    en vez de un listado vacío que se confunde con 'no hay resultados'."""
+
 # ── Configuración de SerpAPI ──────────────────────────────────────────────────
 SERPAPI_API_KEY = os.environ.get("SERPAPI_API_KEY", "")
 SERPAPI_URL = "https://serpapi.com/search"
@@ -38,7 +44,7 @@ GEMINI_MODELS = (
     "gemini-2.5-flash",
     "gemini-2.5-flash-lite",
     "gemini-2.0-flash",
-    "gemini-flash-latest",
+    "gemini-2.0-flash-lite",  # antes 'gemini-flash-latest' -> daba 404 en la API
 )
 GEMINI_RETRY_STATUSES = (429, 503, 404)
 # Tope de resultados por red que se mandan a Gemini para reducir tokens
@@ -327,7 +333,9 @@ def _call_gemini_model(model: str, api_key: str, prompt: str) -> tuple[list | No
     - (None, status): error HTTP con status code (puede disparar fallback)
     - (None, None): error de otro tipo (red, parseo) — no tiene sentido fallback de modelo
     """
-    url = f"https://generativelanguage.googleapis.com/v1/models/{model}:generateContent"
+    # v1beta expone todos los modelos flash/lite actuales; v1 devolvía 404 en
+    # algunos alias (p. ej. gemini-flash-latest), rompiendo la cascada de fallback.
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
     headers = {
         "Content-Type": "application/json",
         "x-goog-api-key": api_key,
@@ -618,6 +626,15 @@ def fetch_posts(
     if len(deduped) != len(all_posts):
         print(f"DEBUG: dedupe quitó {len(all_posts) - len(deduped)} duplicados por post_url")
     all_posts = deduped
+
+    # Si hubo error upstream (SerpAPI/Gemini) y NO quedó ningún post utilizable,
+    # lo señalamos como 503 en vez de devolver [] (que se ve como "no hay nada").
+    # El caso típico es el rate limit / cuota agotada de Gemini free-tier.
+    if any_upstream_error and not all_posts:
+        raise UpstreamUnavailableError(
+            "El analizador de IA (Gemini) o el buscador (SerpAPI) no respondieron, "
+            "probablemente por límite de cuota. Reintentá en un minuto."
+        )
 
     # Política de cache: no cachear si SerpAPI o Gemini fallaron en cualquier red.
     # Así un reintento posterior puede recuperar las redes faltantes en vez de

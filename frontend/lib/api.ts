@@ -63,7 +63,14 @@ export async function searchPosts(
 ): Promise<SearchResponse> {
   const attempt = async (): Promise<SearchResponse> => {
     const res = await postJson("/api/search", req, SEARCH_TIMEOUT_MS);
-    if (!res.ok) throw new Error(`Search failed: ${res.status} ${res.statusText}`);
+    if (!res.ok) {
+      // El backend manda un 'detail' claro en 4xx/5xx (ej. 503 por cuota de Gemini).
+      let detail = "";
+      try { detail = (await res.json())?.detail || ""; } catch { /* sin body JSON */ }
+      const err = new Error(detail || `Search failed: ${res.status} ${res.statusText}`) as Error & { fromResponse?: boolean };
+      err.fromResponse = true;
+      throw err;
+    }
     return res.json();
   };
 
@@ -76,7 +83,13 @@ export async function searchPosts(
     onStatus?.("waking");
     try {
       return await attempt();
-    } catch {
+    } catch (e) {
+      // Si el error vino con respuesta del backend (ej. 503 de cuota), mostramos
+      // ese mensaje tal cual. Si fue un fallo de red/timeout, asumimos cold start.
+      const err = e as Error & { fromResponse?: boolean };
+      if (err?.fromResponse && err.message && !err.message.startsWith("Search failed:")) {
+        throw new Error(err.message);
+      }
       throw new Error(
         "No se pudo conectar con el servidor. Puede estar despertando del modo reposo; " +
         "esperá unos segundos y volvé a intentar.",

@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List, Literal, Optional
-from apify_fetcher import fetch_posts
+from apify_fetcher import fetch_posts, UpstreamUnavailableError
 from docx_generator import generate_docx
 import datetime
 import io
@@ -79,6 +79,7 @@ async def search_endpoint(request: SearchRequest):
         # smata_mode es el switch nuevo; strict_mode queda como alias de compat.
         smata_mode = request.smata_mode or request.strict_mode
 
+        print(f"Keywords recibidas: {request.keywords}, Modo SMATA: {smata_mode}")
         print(f"DEBUG: término armado = '{termino}' | smata_mode={smata_mode}")
 
         raw = fetch_posts(
@@ -106,6 +107,10 @@ async def search_endpoint(request: SearchRequest):
         }
     except HTTPException:
         raise
+    except UpstreamUnavailableError as e:
+        # SerpAPI/Gemini sin cuota o caídos: 503 con mensaje claro para el front.
+        print(f"Upstream no disponible: {e}")
+        raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
         print(f"Error interno: {e}")
         raise HTTPException(status_code=500, detail=str(e))
