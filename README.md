@@ -1,113 +1,169 @@
 # Monitor de Medios SMT
 
-Monitor institucional de medios y redes sociales para el Departamento de Prensa de SMATA (sindicato automotriz argentino).
+Monitor institucional de medios y redes sociales para el Departamento de Prensa de SMATA (sindicato automotriz argentino). Busca publicaciones en X/Twitter, Instagram y TikTok, las puntúa por relevancia con IA y arma informes en Word.
 
-## Stack Técnico
+## Stack técnico
 
 | Capa | Tecnología |
 |------|------------|
-| Frontend | Next.js 14 (App Router) → Vercel (Arquitectura Híbrida) |
-| Backend | FastAPI (Python) → Serverless en Vercel (`/api`) |
-| Integraciones | SerpAPI (Búsqueda en X/Twitter) y Google Gemini 2.5 Flash |
-| Secrets | Variables de entorno `.env` en Backend y Vercel |
+| Frontend | Next.js 14 (App Router) → **Vercel** |
+| Backend | FastAPI (Python) → **Render** (`uvicorn`, ver `Procfile`) |
+| Búsqueda | SerpAPI (Google con `site:` por red) |
+| Scoring IA | Google Gemini 2.5 Flash (cascada de modelos) |
+| Informes | `python-docx` |
+| Secrets | Variables de entorno en Render (backend) y Vercel (frontend) |
+
+## Arquitectura del backend (3 capas)
+
+El backend respeta una separación estricta por capas; cada cambio se hace de forma quirúrgica sobre la capa que corresponde:
+
+- **Capa 1 — Controlador/API** (`main.py`): endpoints, CORS, modelos Pydantic.
+- **Capa 2 — Fetcher ciego** (`fetcher.py`): solo SerpAPI. No conoce a las otras capas.
+- **Capa 3 — Normalización/IA** (`normalizer.py`): scoring con Gemini, parseo de URLs, filtros, y la orquestación `fetch_posts`.
+
+Dependencia: `main.py → normalizer.py → fetcher.py`.
 
 ## Estructura
 
+```text
 /
-├── vercel.json        ← Configuración de ruteo híbrido para Vercel
-├── frontend/          ← Next.js 14
-│   ├── app/
-│   │   ├── page.tsx           ← Pantalla principal del monitor
-│   │   ├── layout.tsx         ← Layout global con identidad SMATA
-│   │   └── globals.css        ← Variables CSS de branding
-│   └── components/
-│       ├── SearchPanel.tsx    ← Sidebar de parámetros de búsqueda
-│       ├── PostCard.tsx       ← Card con el contenido del post analizado
-│       └── ResultsGrid.tsx    ← Grilla de resultados rankeados
+├── vercel.json                  ← Build del frontend en Vercel
+├── .github/workflows/
+│   └── keep-warm.yml            ← Ping periódico al backend (anti cold-start)
 │
-└── backend/           ← FastAPI (arquitectura en 3 capas)
-├── main.py                ← Capa 1: Controlador/API (endpoints, CORS, Pydantic)
-├── fetcher.py             ← Capa 2: Extracción/Fetcher CIEGO (solo SerpAPI)
-├── normalizer.py          ← Capa 3: Normalización/Filtro e IA (Gemini, URLs, score)
-├── docx_generator.py      ← Generación del informe Word
-├── test_fetcher.py        ← Tests de la Capa 2 (pytest)
-├── test_normalizer.py     ← Tests de la Capa 3 (pytest)
-├── requirements.txt       ← Dependencias del backend
-└── requirements-dev.txt   ← Dependencias de desarrollo (pytest)
+├── frontend/                    ← Next.js 14 (App Router) → Vercel
+│   ├── app/
+│   │   ├── page.tsx             ← Pantalla principal del monitor
+│   │   ├── layout.tsx           ← Layout global, header y toggle de tema
+│   │   └── globals.css          ← Variables CSS (tema claro/oscuro + branding)
+│   ├── components/
+│   │   ├── SearchPanel.tsx      ← Panel de parámetros de búsqueda
+│   │   ├── PostCard.tsx         ← Card de un post analizado
+│   │   ├── ResultsGrid.tsx      ← Grilla de resultados rankeados
+│   │   ├── ReportButton.tsx     ← Botón de informe Word
+│   │   ├── ScoreBadge.tsx       ← Badge de score
+│   │   └── ThemeToggle.tsx      ← Toggle de tema claro/oscuro
+│   └── lib/api.ts               ← Cliente HTTP del backend
+│
+└── backend/                     ← FastAPI → Render
+    ├── main.py                  ← Capa 1: Controlador/API
+    ├── fetcher.py               ← Capa 2: Fetcher ciego (SerpAPI)
+    ├── normalizer.py            ← Capa 3: Normalización/Filtro/IA (Gemini)
+    ├── docx_generator.py        ← Generación del informe Word
+    ├── config.py                ← Colores institucionales del informe
+    ├── test_fetcher.py          ← Tests de la Capa 2 (pytest)
+    ├── test_normalizer.py       ← Tests de la Capa 3 (pytest)
+    ├── Procfile                 ← Comando de arranque en Render
+    ├── requirements.txt
+    └── requirements-dev.txt     ← Dependencias de desarrollo (pytest)
+```
 
+## Setup local
 
-## Setup Local
+### Backend
 
-### Backend ```bash
+```bash
 cd backend
 python -m venv venv
-venv\Scripts\activate         # En Windows
+venv\Scripts\activate            # Windows  (source venv/bin/activate en Linux/Mac)
 pip install -r requirements.txt
 
-## Copiar y completar variables de entorno
-copy .env.example .env
-## Agregar las siguientes claves en .env:
-### SERPAPI_API_KEY=tu_clave_aqui
-### GEMINI_API_KEY=tu_clave_aqui
+# Crear backend/.env con las claves:
+#   SERPAPI_API_KEY=tu_clave
+#   GEMINI_API_KEY=tu_clave
 
-python main.py
-### → http://localhost:8000
-Frontend
-Bash
+python main.py                   # o: uvicorn main:app --reload
+# → http://localhost:8000
+```
+
+### Frontend
+
+```bash
 cd frontend
 npm install
+
+# Crear frontend/.env.local con:
+#   NEXT_PUBLIC_API_URL=http://localhost:8000
+
 npm run dev
-### → http://localhost:3000
-Variable de entorno del frontend
-Crear frontend/.env.local:
+# → http://localhost:3000
+```
 
-NEXT_PUBLIC_API_URL=http://localhost:8000
-Deploy en Vercel
-Gracias al archivo vercel.json en la raíz, el despliegue del frontend y backend se realiza de forma unificada en un solo paso:
+### Tests
 
-Conectar el repositorio de GitHub en vercel.com
+```bash
+cd backend
+pip install -r requirements-dev.txt
+python -m pytest -q
+```
 
-Dejar el Root Directory vacío (raíz del proyecto /) para que lea el archivo vercel.json.
+## Deploy
 
-En la sección Environment Variables de Vercel, agregar las credenciales requeridas por el backend:
+### Frontend → Vercel
 
-SERPAPI_API_KEY
+1. Conectar el repositorio en [vercel.com](https://vercel.com).
+2. Dejar el **Root Directory** vacío (raíz del proyecto): Vercel usa `vercel.json` y buildea `frontend/`.
+3. En **Environment Variables**, agregar `NEXT_PUBLIC_API_URL` = URL pública del backend en Render (ej. `https://tu-backend.onrender.com`). Es una variable de build: requiere redeploy al cambiarla.
 
-GEMINI_API_KEY
+### Backend → Render
 
-Darle a Deploy. Vercel mapeará automáticamente el backend bajo las rutas /api/* y el frontend en la raíz.
+1. Crear un **Web Service** apuntando a `backend/` (Render usa el `Procfile`: `uvicorn main:app`).
+2. En **Environment**, agregar:
+   - `SERPAPI_API_KEY`
+   - `GEMINI_API_KEY`
+   - `ALLOWED_ORIGINS` (opcional; orígenes permitidos por CORS, separados por coma).
 
-API Endpoints
-POST /api/search
-Envía los criterios y retorna los posts parseados y puntuados por la IA.
+> Nota: en el plan free de Render la instancia se duerme tras ~15 min de inactividad y la primera request luego tarda ~40-50 s. El workflow `keep-warm.yml` mitiga esos cold-starts.
 
-JSON
+## API
+
+### `POST /api/search`
+
+Envía los criterios de búsqueda y retorna los posts parseados y puntuados por la IA.
+
+```json
 {
   "keywords": ["SMATA", "paritaria"],
   "hashtags": ["smata"],
   "accounts": [],
   "networks": ["twitter", "instagram", "tiktok"],
-  "strict_mode": false
+  "date": null,
+  "smata_mode": false
 }
-Modelo de Datos (Post)
-TypeScript
-{
-  id: string,
-  network: "twitter" | "instagram" | "tiktok",
-  author: string,
-  author_url: string,
-  text: string,
-  date: string,
-  post_url: string,
-  relevance_score: number,   // Escala 0-100 calculada por Gemini
-  matched_terms: string[]
-}
-Branding SMATA
-Colores corporativos aplicados en la interfaz para mantener la identidad institucional:
+```
 
-CSS
---smata-green-dark:  #1B4D2E
---smata-green-mid:   #2E7D32
---smata-green-light: #4CAF50
---smata-green-pale:  #E8F5E9
---smata-gold:        #FFC107
+`smata_mode`: `true` = filtro estricto (solo SMATA / sector automotor), `false` = monitor de prensa amplio.
+
+### `POST /api/generate-docx`
+
+Recibe los posts seleccionados y devuelve el informe en formato Word (`.docx`).
+
+### Modelo de datos (`Post`)
+
+```ts
+interface Post {
+  id: string;
+  network: "twitter" | "instagram" | "tiktok";
+  author: string;
+  author_url: string;
+  text: string;
+  date: string;
+  post_url: string;
+  relevance_score: number;          // 0-100, calculado por Gemini
+  relevance_level: "alta" | "media" | "baja";
+  matched_terms: string[];
+  video_url: string | null;
+}
+```
+
+## Branding SMATA
+
+Colores institucionales aplicados en la interfaz:
+
+```css
+--smata-green-dark:  #1B4D2E;
+--smata-green-mid:   #2E7D32;
+--smata-green-light: #4CAF50;
+--smata-green-pale:  #E8F5E9;
+--smata-gold:        #FFC107;
+```
