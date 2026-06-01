@@ -4,6 +4,7 @@ import json
 import time
 import datetime
 import requests
+from urllib.parse import quote
 
 # ── Configuración de SerpAPI ──────────────────────────────────────────────────
 SERPAPI_API_KEY = os.environ.get("SERPAPI_API_KEY", "")
@@ -100,6 +101,22 @@ def _parse_tiktok_url(url: str) -> tuple[str, str, str]:
         return "", "", url or ""
     user, video_id = m.group(1), m.group(2)
     return user, f"https://tiktok.com/@{user}", video_id
+
+
+def _tiktok_search_fallback_url(author: str) -> str | None:
+    """Link de búsqueda seguro dentro de TikTok para el autor + 'smata'.
+
+    SerpAPI a veces devuelve la URL del último video del creador en lugar del
+    post real que matcheó en texto. En vez de confiar en esa URL distorsionada,
+    apuntamos a una búsqueda dentro de la plataforma que filtra por el usuario y
+    el contexto SMATA, así Prensa llega al video correcto en un clic.
+    Devuelve None si no hay username del cual armar la búsqueda.
+    """
+    clean = (author or "").lstrip("@").strip()
+    if not clean:
+        return None
+    q = quote(f"@{clean} smata", safe="@")
+    return f"https://www.tiktok.com/search?q={q}"
 
 
 def _detect_network_from_url(url: str) -> str | None:
@@ -414,6 +431,16 @@ Resultados de SerpAPI:
         date = src.get("date", "") or ""
         network, author, author_url, post_id = _parse_post_url(post_url, hint_network=network_hint)
 
+        # TikTok: la URL de video que manda SerpAPI suele redirigir al último
+        # video del creador, no al post que matcheó. Reemplazamos post_url por
+        # una búsqueda interna segura (@usuario + smata) sin tocar el texto del
+        # informe. Si no hay username, conservamos la URL original como está.
+        link = post_url
+        if network == "tiktok":
+            fallback = _tiktok_search_fallback_url(author)
+            if fallback:
+                link = fallback
+
         posts.append({
             "id": post_id or post_url,
             "network": network,
@@ -421,7 +448,7 @@ Resultados de SerpAPI:
             "author_url": author_url,
             "text": snippet,
             "date": date,
-            "post_url": post_url,
+            "post_url": link,
             "relevance_score": score,
             "relevance_level": _level_from_score(score),
             "matched_terms": _find_matched_terms(snippet, keywords),
