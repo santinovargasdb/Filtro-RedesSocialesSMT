@@ -25,14 +25,15 @@ Monitor institucional de medios y redes sociales para el Departamento de Prensa 
 │       ├── PostCard.tsx       ← Card con el contenido del post analizado
 │       └── ResultsGrid.tsx    ← Grilla de resultados rankeados
 │
-└── backend/           ← FastAPI
-├── api/
-│   └── index.py           ← Entrada principal adaptada para Vercel Serverless
-├── main.py                ← Endpoints locales
-├── apify_fetcher.py       ← Extractor de posts con SerpAPI y análisis de Gemini
-├── filters.py             ← Scoring semántico y filtrado
-├── config.py              ← Constantes, prompts y términos clave
-└── requirements.txt       ← Dependencias del backend
+└── backend/           ← FastAPI (arquitectura en 3 capas)
+├── main.py                ← Capa 1: Controlador/API (endpoints, CORS, Pydantic)
+├── fetcher.py             ← Capa 2: Extracción/Fetcher CIEGO (solo SerpAPI)
+├── normalizer.py          ← Capa 3: Normalización/Filtro e IA (Gemini, URLs, score)
+├── docx_generator.py      ← Generación del informe Word
+├── test_fetcher.py        ← Tests de la Capa 2 (pytest)
+├── test_normalizer.py     ← Tests de la Capa 3 (pytest)
+├── requirements.txt       ← Dependencias del backend
+└── requirements-dev.txt   ← Dependencias de desarrollo (pytest)
 
 
 ## Setup Local

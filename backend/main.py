@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List, Literal, Optional
-from apify_fetcher import fetch_posts, UpstreamUnavailableError
+from normalizer import fetch_posts, UpstreamUnavailableError
 from docx_generator import generate_docx
 import datetime
 import io
