@@ -20,7 +20,9 @@ export interface SearchRequest {
   accounts: string[];
   networks: ("twitter" | "instagram" | "tiktok")[];
   date: string;
-  strict_mode: boolean;
+  // Modo SMATA: true = criterio estricto (solo SMATA/automotor),
+  // false = monitor de prensa amplio.
+  smata_mode: boolean;
 }
 
 export interface SearchResponse {

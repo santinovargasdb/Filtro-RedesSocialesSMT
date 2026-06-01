@@ -33,6 +33,11 @@ class SearchRequest(BaseModel):
     hashtags: List[str] = []
     accounts: List[str] = []
     date: Optional[str] = None
+    # Switch "Modo SMATA": True = criterio hiper-estricto (solo SMATA/automotor),
+    # False = monitor de prensa amplio (no exige mención de SMATA).
+    smata_mode: bool = False
+    # Compat hacia atrás: el frontend viejo enviaba 'strict_mode'. Si llega en True
+    # mientras conviven builds durante el deploy, se respeta como Modo SMATA.
     strict_mode: bool = False
 
 
@@ -71,12 +76,15 @@ async def search_endpoint(request: SearchRequest):
         partes = request.keywords + hashtag_words
         termino = " ".join(partes) if partes else "SMATA"
 
-        print(f"DEBUG: término armado = '{termino}'")
+        # smata_mode es el switch nuevo; strict_mode queda como alias de compat.
+        smata_mode = request.smata_mode or request.strict_mode
+
+        print(f"DEBUG: término armado = '{termino}' | smata_mode={smata_mode}")
 
         raw = fetch_posts(
             termino=termino,
             fecha_desde=request.date,
-            strict_mode=request.strict_mode,
+            smata_mode=smata_mode,
             keywords=request.keywords,
             accounts=request.accounts,
             networks=request.networks,

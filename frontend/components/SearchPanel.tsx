@@ -64,14 +64,14 @@ export default function SearchPanel({ onSearch, loading }: SearchPanelProps) {
   const [accounts, setAccounts] = useState<string[]>([]);
   const [networks, setNetworks] = useState<string[]>(["twitter", "instagram", "tiktok"]);
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
-  const [strictMode, setStrictMode] = useState(false);
+  const [smataMode, setSmataMode] = useState(false);
 
   const toggleNetwork = (id: string) =>
     setNetworks(prev => prev.includes(id) ? prev.filter(n => n !== id) : [...prev, id]);
 
   const handleSearch = () => {
     if (!keywords.length && !hashtags.length) return;
-    onSearch({ keywords, hashtags, accounts, networks: networks as SearchRequest["networks"], date, strict_mode: strictMode });
+    onSearch({ keywords, hashtags, accounts, networks: networks as SearchRequest["networks"], date, smata_mode: smataMode });
   };
 
   return (
@@ -140,23 +140,25 @@ export default function SearchPanel({ onSearch, loading }: SearchPanelProps) {
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "space-between",
         padding: "12px", borderRadius: "var(--radius-sm)",
-        background: strictMode ? "rgba(255,193,7,0.1)" : "rgba(255,255,255,0.04)",
-        border: `1px solid ${strictMode ? "rgba(255,193,7,0.4)" : "var(--border-color)"}`,
+        background: smataMode ? "rgba(255,193,7,0.1)" : "rgba(255,255,255,0.04)",
+        border: `1px solid ${smataMode ? "rgba(255,193,7,0.4)" : "var(--border-color)"}`,
         transition: "all 0.2s", cursor: "pointer",
-      }} onClick={() => setStrictMode(!strictMode)}>
+      }} onClick={() => setSmataMode(!smataMode)}>
         <div>
-          <div style={{ fontSize: "13px", fontWeight: 600, color: strictMode ? "var(--smata-gold)" : "var(--text-primary)" }}>
-            Strict SMATA Mode
+          <div style={{ fontSize: "13px", fontWeight: 600, color: smataMode ? "var(--smata-gold)" : "var(--text-primary)" }}>
+            Modo SMATA
           </div>
-          <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>Solo posts con score ≥ 50</div>
+          <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+            {smataMode ? "Estricto: solo SMATA / sector automotor" : "Amplio: monitoreo de prensa general"}
+          </div>
         </div>
         <div style={{
           width: "38px", height: "22px", borderRadius: "11px",
-          background: strictMode ? "var(--smata-gold)" : "rgba(255,255,255,0.1)",
+          background: smataMode ? "var(--smata-gold)" : "rgba(255,255,255,0.1)",
           position: "relative", transition: "all 0.2s",
         }}>
           <div style={{
-            position: "absolute", top: "3px", left: strictMode ? "19px" : "3px",
+            position: "absolute", top: "3px", left: smataMode ? "19px" : "3px",
             width: "16px", height: "16px", borderRadius: "50%",
             background: "white", transition: "left 0.2s",
           }} />

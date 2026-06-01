@@ -56,10 +56,11 @@ SCORE_FLOOR_BY_NETWORK = {
 }
 
 
-def _score_floor(network: str, strict_mode: bool) -> int:
+def _score_floor(network: str, smata_mode: bool) -> int:
     base = SCORE_FLOOR_BY_NETWORK.get(network, SCORE_FLOOR_DEFAULT)
-    # En strict_mode global el piso nunca baja de 50.
-    if strict_mode:
+    # En Modo SMATA (estricto) el piso nunca baja de 50. En modo amplio se usan
+    # los pisos por red (30 default, TikTok 50 por la baja calidad de snippets).
+    if smata_mode:
         return max(base, 50)
     return base
 
@@ -343,7 +344,7 @@ def _call_gemini_model(model: str, api_key: str, prompt: str) -> tuple[list | No
 def _process_with_gemini(
     resultados: list[dict],
     termino: str,
-    strict_mode: bool,
+    smata_mode: bool,
     keywords: list[str],
     network_hint: str = "twitter",
 ) -> list[dict] | None:
@@ -370,37 +371,75 @@ def _process_with_gemini(
 
     network_label = _NETWORK_PROMPT_LABEL.get(network_hint, network_hint or "X (Twitter)")
     resultados_text = json.dumps(resultados_limitados, ensure_ascii=False, indent=2)
-    strict_note = "Solo incluí posts con score >= 50." if strict_mode else "Incluí todos los posts."
 
-    # Refuerzo agresivo solo para TikTok: la calidad del snippet en Google es baja
-    # y muchos resultados son de cuentas extranjeras o sin relación con SMATA.
-    tiktok_warning = ""
-    if network_hint == "tiktok":
-        tiktok_warning = (
-            "\nATENCIÓN — REGLAS ADICIONALES PARA TIKTOK:\n"
-            "Los snippets de TikTok en Google suelen ser pobres, en otros idiomas o "
-            "de cuentas internacionales sin relación con el sindicato SMATA ni con la "
-            "industria automotriz argentina. Aplicá estas reglas estrictas:\n"
-            "- Si el snippet NO menciona explícitamente al sindicato SMATA, a la "
-            "industria automotriz argentina, o a un actor argentino del rubro "
-            "(empresas como Ford/Volkswagen/Toyota Argentina, dirigentes gremiales, "
-            "políticos del sector, etc.) → score 0-15.\n"
-            "- Posts en otro idioma que no sea español rioplatense → score 0.\n"
-            "- Cuentas o handles que parezcan extranjeros o no tengan contexto "
-            "argentino → score 0-10.\n"
-            "- No asumas relevancia si el texto es muy corto o ambiguo: en caso de "
-            "duda, score bajo.\n"
+    # ── Bifurcación del criterio según el switch "Modo SMATA" ──────────────────
+    if smata_mode:
+        # MODO SMATA (hiper-estricto): el contenido DEBE estar ligado a SMATA, a la
+        # industria automotriz o a los mecánicos en Argentina. Cualquier desvío
+        # del tema (p. ej. contenido de Indonesia u otro país sin relación) → 0.
+        system_role = (
+            "Sos un asistente de análisis de redes sociales para el sindicato SMATA "
+            "(sector automotriz argentino)."
         )
+        criterio = (
+            "1. Analizá cada resultado y determiná si es relevante para SMATA y el "
+            "sector automotriz/sindical argentino.\n"
+            "2. El contenido DEBE estar ligado a SMATA, a la industria automotriz o a "
+            "los mecánicos en Argentina. Cualquier desvío del tema (por ejemplo "
+            "contenido de Indonesia u otro país sin relación) va a score 0.\n"
+            "3. Asigná un score del 0 al 100 según su relevancia.\n"
+            "4. Solo incluí posts con score >= 50."
+        )
+        tiktok_warning = ""
+        if network_hint == "tiktok":
+            tiktok_warning = (
+                "\nATENCIÓN — REGLAS ADICIONALES PARA TIKTOK:\n"
+                "Los snippets de TikTok en Google suelen ser pobres, en otros idiomas o "
+                "de cuentas internacionales sin relación con el sindicato SMATA ni con la "
+                "industria automotriz argentina. Aplicá estas reglas estrictas:\n"
+                "- Si el snippet NO menciona explícitamente al sindicato SMATA, a la "
+                "industria automotriz argentina, o a un actor argentino del rubro "
+                "(empresas como Ford/Volkswagen/Toyota Argentina, dirigentes gremiales, "
+                "políticos del sector, etc.) → score 0-15.\n"
+                "- Posts en otro idioma que no sea español rioplatense → score 0.\n"
+                "- Cuentas o handles que parezcan extranjeros o no tengan contexto "
+                "argentino → score 0-10.\n"
+                "- No asumas relevancia si el texto es muy corto o ambiguo: en caso de "
+                "duda, score bajo.\n"
+            )
+    else:
+        # MODO AMPLIO (Monitor de Prensa): dejá pasar lo relevante a nivel político,
+        # gremial, social, económico o cultural en Argentina, SIN exigir SMATA.
+        system_role = (
+            "Sos un monitor de prensa amplio para un sindicato argentino. Analizás "
+            "tendencias en redes sociales del ámbito argentino."
+        )
+        criterio = (
+            "1. Dejá pasar cualquier publicación que coincida con la keyword y que sea "
+            "relevante a nivel político, gremial, social, económico o cultural en "
+            "Argentina. NO exijas que el post mencione a SMATA.\n"
+            "2. Asigná un score del 0 al 100 según esa relevancia informativa.\n"
+            "3. Penalizá con score 0 ÚNICAMENTE: spam evidente, bots, contenido "
+            "internacional fuera de LATAM, o posteos completamente vacíos de valor "
+            "informativo.\n"
+            "4. Incluí todos los posts que superen ese criterio amplio."
+        )
+        tiktok_warning = ""
+        if network_hint == "tiktok":
+            tiktok_warning = (
+                "\nNOTA PARA TIKTOK:\n"
+                "Los snippets de TikTok en Google suelen ser pobres o multi-idioma. "
+                "Penalizá con score bajo solo el contenido internacional fuera de LATAM, "
+                "el spam o los videos sin valor informativo. NO exijas mención de SMATA.\n"
+            )
 
-    prompt = f"""Sos un asistente de análisis de redes sociales para el sindicato SMATA (sector automotriz argentino).
+    prompt = f"""{system_role}
 Te paso resultados reales de Google sobre publicaciones en {network_label} relacionadas con el término: "{termino}".
 
 Cada resultado tiene: "title" (título del resultado en Google), "snippet" (extracto del post), "url" (link directo), "date" (fecha si está disponible).
 
 Tu tarea:
-1. Analizá cada resultado y determiná si es relevante para SMATA y el sector automotriz/sindical argentino.
-2. Asigná un score del 0 al 100 según su relevancia.
-3. {strict_note}{tiktok_warning}
+{criterio}{tiktok_warning}
 
 Devolvé ÚNICAMENTE un JSON válido, sin texto adicional ni bloques de código. Formato exacto:
 [
@@ -474,7 +513,7 @@ Resultados de SerpAPI:
     filtered: list[dict] = []
     dropped_by_floor: dict[str, int] = {}
     for p in posts:
-        floor = _score_floor(p["network"], strict_mode)
+        floor = _score_floor(p["network"], smata_mode)
         if p["relevance_score"] >= floor:
             filtered.append(p)
         else:
@@ -489,7 +528,7 @@ Resultados de SerpAPI:
 def fetch_posts(
     termino: str,
     fecha_desde: str = None,
-    strict_mode: bool = False,
+    smata_mode: bool = False,
     keywords: list[str] | None = None,
     accounts: list[str] | None = None,
     networks: list[str] | None = None,
@@ -501,12 +540,12 @@ def fetch_posts(
     if not nets:
         nets = ["twitter"]  # fallback seguro si el front no manda nada válido
 
-    print(f"DEBUG: fetch_posts termino='{termino}' redes={nets} strict_mode={strict_mode}")
+    print(f"DEBUG: fetch_posts termino='{termino}' redes={nets} smata_mode={smata_mode}")
 
     cache_key = (
         termino,
         fecha_desde,
-        strict_mode,
+        smata_mode,
         tuple(sorted(keywords or [])),
         tuple(sorted(accounts or [])),
         tuple(sorted(nets)),
@@ -538,7 +577,7 @@ def fetch_posts(
             continue
         total_serp_results += len(resultados)
         posts = _process_with_gemini(
-            resultados, termino, strict_mode, keywords or [], network_hint=net
+            resultados, termino, smata_mode, keywords or [], network_hint=net
         )
         if posts is None:
             any_upstream_error = True
