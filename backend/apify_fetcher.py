@@ -393,7 +393,24 @@ def _process_with_gemini(
     resultados_limitados = resultados
     redes_presentes = sorted({r.get("network", "") for r in resultados if r.get("network")})
     redes_label = ", ".join(_NETWORK_PROMPT_LABEL.get(n, n) for n in redes_presentes) or "redes sociales"
-    resultados_text = json.dumps(resultados_limitados, ensure_ascii=False, indent=2)
+
+    # Inyección de IDs únicos e inequívocos ("Post_0", "Post_1", ...). El scoring
+    # vuelve a asociarse por ese ID (no por URL), para que Gemini no pueda mezclar
+    # publicaciones ni alterar la asociación. by_id mapea ID -> resultado crudo.
+    by_id: dict[str, dict] = {}
+    items_para_prompt: list[dict] = []
+    for i, r in enumerate(resultados_limitados):
+        pid = f"Post_{i}"
+        by_id[pid] = r
+        items_para_prompt.append({
+            "id": pid,
+            "network": r.get("network", ""),
+            "title": r.get("title", ""),
+            "snippet": r.get("snippet", ""),
+            "url": r.get("url", ""),
+            "date": r.get("date", ""),
+        })
+    resultados_text = json.dumps(items_para_prompt, ensure_ascii=False, indent=2)
 
     # ── Bifurcación del criterio según el switch "Modo SMATA" ──────────────────
     if smata_mode:
@@ -457,22 +474,21 @@ def _process_with_gemini(
             )
 
     prompt = f"""{system_role}
-Te paso resultados reales de Google sobre publicaciones en {redes_label} relacionadas con el término: "{termino}".
 
-Cada resultado tiene: "title" (título del resultado en Google), "snippet" (extracto del post), "url" (link directo), "date" (fecha si está disponible) y "network" (la red social de origen: twitter, instagram o tiktok).
+Vas a recibir una lista de publicaciones en formato JSON sobre publicaciones en {redes_label} relacionadas con el término: "{termino}". Cada publicación tiene un "id" único ("Post_0", "Post_1", ...), más "title", "snippet", "url", "date" y "network" (twitter, instagram o tiktok).
 
-Tu tarea:
+REGLA DE AISLAMIENTO (OBLIGATORIA): Debés evaluar cada publicación de forma totalmente AISLADA e INDEPENDIENTE, aplicando exactamente los mismos criterios de filtrado a todas. Está TERMINANTEMENTE PROHIBIDO que el contexto, el tema o el puntaje de una publicación influya en el de otra. Tratá cada "id" como un caso separado, como si lo analizaras solo. No agrupes ni promedies ni "contagies" relevancia entre publicaciones.
+
+Criterios de evaluación (idénticos para cada publicación):
 {criterio}{tiktok_warning}
 
-Devolvé ÚNICAMENTE un JSON válido, sin texto adicional ni bloques de código. Formato exacto:
+Devolvé ÚNICAMENTE un JSON válido (sin texto adicional ni bloques de código) que sea un ESPEJO EXACTO de los IDs recibidos: un objeto por cada publicación enviada, con su mismo "id". No agregues ni omitas ninguno. Formato exacto:
 [
-  {{
-    "post_url": "url_del_resultado",
-    "score": 75
-  }}
+  {{ "id": "Post_0", "score": 90, "razon": "breve justificación del puntaje" }},
+  {{ "id": "Post_1", "score": 0, "razon": "breve justificación del puntaje" }}
 ]
 
-Resultados de SerpAPI:
+Publicaciones a evaluar:
 {resultados_text}"""
 
     # Cascada de modelos: el primero que responda OK gana. Solo se intenta el
@@ -492,17 +508,22 @@ Resultados de SerpAPI:
     if scored is None:
         return None
 
-    by_url = {r.get("url", ""): r for r in resultados_limitados}
-
     posts: list[dict] = []
     for item in scored:
-        post_url = item.get("post_url", "") or ""
+        # Mapeo de retorno por ID: recuperamos el post crudo ORIGINAL por su id.
+        # La URL sale de NUESTROS datos (no de lo que devuelve Gemini), así la
+        # asociación es inequívoca y la IA no puede alterar el link.
+        pid = item.get("id", "") or ""
+        src = by_id.get(pid)
+        if src is None:
+            # id inexistente (Gemini lo inventó o repitió): lo ignoramos.
+            continue
         try:
             score = int(item.get("score", 0))
         except (TypeError, ValueError):
             score = 0
 
-        src = by_url.get(post_url, {})
+        post_url = src.get("url", "") or ""
         snippet = src.get("snippet", "") or src.get("title", "")
         date = src.get("date", "") or ""
         network, author, author_url, post_id = _parse_post_url(post_url, hint_network=src.get("network"))

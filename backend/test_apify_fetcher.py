@@ -117,10 +117,11 @@ def test_process_una_sola_llamada_para_todas_las_redes(monkeypatch):
 
     def fake(model, api_key, prompt):
         llamadas["n"] += 1
+        # Gemini responde por ID (espejo de los Post_N enviados).
         return ([
-            {"post_url": "https://x.com/u/status/1", "score": 90},
-            {"post_url": "https://www.instagram.com/u/p/AAA/", "score": 80},
-            {"post_url": "https://www.tiktok.com/@creador/video/123", "score": 75},
+            {"id": "Post_0", "score": 90, "razon": "x"},
+            {"id": "Post_1", "score": 80, "razon": "x"},
+            {"id": "Post_2", "score": 75, "razon": "x"},
         ], None)
 
     monkeypatch.setattr(af, "_call_gemini_model", fake)
@@ -141,7 +142,7 @@ def test_process_una_sola_llamada_para_todas_las_redes(monkeypatch):
 def test_process_descarta_bajo_el_piso(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "test")
     monkeypatch.setattr(af, "_call_gemini_model",
-                        _fake_scored([{"post_url": "https://www.tiktok.com/@u/video/9", "score": 40}]))
+                        _fake_scored([{"id": "Post_0", "score": 40, "razon": "x"}]))
     serp = [{"title": "", "snippet": "x", "url": "https://www.tiktok.com/@u/video/9", "date": "", "network": "tiktok"}]
     # En amplio el piso de TikTok es 50 -> 40 se descarta.
     assert af._process_with_gemini(serp, "smata", smata_mode=False, keywords=[]) == []
@@ -150,11 +151,33 @@ def test_process_descarta_bajo_el_piso(monkeypatch):
 def test_process_tiktok_sin_deeplink_cae_al_fallback(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "test")
     monkeypatch.setattr(af, "_call_gemini_model",
-                        _fake_scored([{"post_url": "https://www.tiktok.com/@creador", "score": 90}]))
+                        _fake_scored([{"id": "Post_0", "score": 90, "razon": "x"}]))
     serp = [{"title": "", "snippet": "x", "url": "https://www.tiktok.com/@creador", "date": "", "network": "tiktok"}]
     posts = af._process_with_gemini(serp, "smata", smata_mode=False, keywords=[])
     # URL de perfil (sin /video/): no es deep-link, se reemplaza por búsqueda segura.
     assert posts[0]["post_url"].startswith("https://www.tiktok.com/search?q=")
+
+
+def test_process_mapea_por_id_y_respeta_url_original(monkeypatch):
+    """Gemini responde fuera de orden y con un id inexistente; el backend mapea
+    por id, ignora el id basura y NUNCA toma la URL de la respuesta de Gemini."""
+    monkeypatch.setenv("GEMINI_API_KEY", "test")
+    monkeypatch.setattr(af, "_call_gemini_model", _fake_scored([
+        {"id": "Post_1", "score": 88, "razon": "x"},              # fuera de orden
+        {"id": "Post_999", "score": 100, "razon": "inventado"},   # id que no enviamos
+        {"id": "Post_0", "score": 70, "razon": "x"},
+    ]))
+    serp = [
+        {"title": "", "snippet": "uno", "url": "https://x.com/a/status/1", "date": "", "network": "twitter"},
+        {"title": "", "snippet": "dos", "url": "https://x.com/b/status/2", "date": "", "network": "twitter"},
+    ]
+    posts = af._process_with_gemini(serp, "smata", smata_mode=False, keywords=[])
+    by_url = {p["post_url"]: p for p in posts}
+    # Solo 2 posts (el id inventado se ignora).
+    assert len(posts) == 2
+    # El score de Post_1 va al segundo serp (url .../2), no se mezcla.
+    assert by_url["https://x.com/b/status/2"]["relevance_score"] == 88
+    assert by_url["https://x.com/a/status/1"]["relevance_score"] == 70
 
 
 def test_process_sin_api_key_devuelve_none(monkeypatch):
@@ -180,3 +203,26 @@ def test_prompt_bifurca_estricto_vs_amplio(monkeypatch):
 
     af._process_with_gemini(serp, "salud", smata_mode=False, keywords=[])
     assert "NO exijas" in capturado["p"]
+
+
+def test_prompt_blindado_ids_y_aislamiento(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "test")
+    capturado = {}
+
+    def fake(model, api_key, prompt):
+        capturado["p"] = prompt
+        return ([], None)
+
+    monkeypatch.setattr(af, "_call_gemini_model", fake)
+    serp = [
+        {"title": "", "snippet": "a", "url": "https://x.com/u/status/1", "date": "", "network": "twitter"},
+        {"title": "", "snippet": "b", "url": "https://x.com/u/status/2", "date": "", "network": "twitter"},
+    ]
+    af._process_with_gemini(serp, "smata", smata_mode=True, keywords=[])
+    p = capturado["p"]
+    # IDs inyectados y formato espejo por id.
+    assert "Post_0" in p and "Post_1" in p
+    assert '"id"' in p
+    # Regla de aislamiento explícita.
+    assert "AISLAMIENTO" in p
+    assert "PROHIBIDO" in p
