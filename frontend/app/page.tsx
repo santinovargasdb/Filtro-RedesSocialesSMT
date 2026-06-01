@@ -13,14 +13,22 @@ export default function Home() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
 
   const handleSearch = useCallback(async (params: SearchRequest) => {
     setLoading(true);
     setError(null);
+    setStatus(null);
     setPosts([]);
     setSelectedIds(new Set());
     try {
-      const result = await searchPosts(params);
+      const result = await searchPosts(params, (s) => {
+        setStatus(
+          s === "waking"
+            ? "El servidor estaba en reposo. Despertándolo… puede tardar ~40s."
+            : "Conectando con el servidor…",
+        );
+      });
       setPosts(result.posts);
       setSummary(result.summary);
       // Auto-select posts with score >= 50
@@ -29,6 +37,7 @@ export default function Home() {
       setError(err instanceof Error ? err.message : "Error al conectar con el servidor");
     } finally {
       setLoading(false);
+      setStatus(null);
     }
   }, []);
 
@@ -77,6 +86,19 @@ export default function Home() {
             <div style={{ marginLeft: "auto" }}>
               <ReportButton posts={posts} selectedIds={selectedIds} />
             </div>
+          </div>
+        )}
+
+        {/* Status banner (cold start / conexión) */}
+        {loading && status && (
+          <div style={{
+            margin: "16px 24px 0",
+            padding: "12px 16px",
+            borderRadius: "var(--radius-sm)",
+            background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.3)",
+            color: "#93C5FD", fontSize: "13px",
+          }}>
+            ⏳ {status}
           </div>
         )}
 

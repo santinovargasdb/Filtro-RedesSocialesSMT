@@ -1,0 +1,24 @@
+name: keep-warm
+
+# Mantiene despierto el backend de Render (free tier se duerme tras ~15 min de
+# inactividad y la primera request luego tarda ~40-50s en responder, lo que el
+# navegador reporta como error de CORS). Le pegamos al endpoint raíz cada 10 min.
+#
+# Nota: el scheduler de GitHub Actions NO es puntual (puede demorarse varios
+# minutos bajo carga), así que esto reduce mucho los cold starts pero no los
+# elimina al 100%. Para garantía total, un servicio externo (UptimeRobot,
+# cron-job.org) o el plan pago de Render son más confiables.
+
+on:
+  schedule:
+    - cron: "*/10 * * * *" # cada 10 minutos (UTC)
+  workflow_dispatch: {}     # permite dispararlo manualmente desde la pestaña Actions
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping backend
+        run: |
+          echo "Pinging backend to keep it warm..."
+          curl -fsS -m 60 https://filtro-redessocialessmt.onrender.com/ || echo "Ping falló (puede estar despertando); se reintenta en el próximo ciclo."

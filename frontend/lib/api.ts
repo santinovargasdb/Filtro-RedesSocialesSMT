@@ -32,14 +32,55 @@ export interface SearchResponse {
   };
 }
 
-export async function searchPosts(req: SearchRequest): Promise<SearchResponse> {
-  const res = await fetch(`${API_BASE}/api/search`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(req),
-  });
-  if (!res.ok) throw new Error(`Search failed: ${res.statusText}`);
-  return res.json();
+// El backend corre en Render free tier, que duerme la instancia tras ~15 min de
+// inactividad. La primera request la despierta y puede tardar ~40-50s; mientras
+// arranca, el proxy de Render responde 502 sin headers CORS (se ve como "error de
+// CORS" en el navegador). Por eso usamos un timeout amplio y un reintento.
+const SEARCH_TIMEOUT_MS = 100_000;
+
+async function postJson(path: string, body: unknown, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(`${API_BASE}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export type SearchStatus = "connecting" | "waking";
+
+export async function searchPosts(
+  req: SearchRequest,
+  onStatus?: (status: SearchStatus) => void,
+): Promise<SearchResponse> {
+  const attempt = async (): Promise<SearchResponse> => {
+    const res = await postJson("/api/search", req, SEARCH_TIMEOUT_MS);
+    if (!res.ok) throw new Error(`Search failed: ${res.status} ${res.statusText}`);
+    return res.json();
+  };
+
+  onStatus?.("connecting");
+  try {
+    return await attempt();
+  } catch {
+    // Falló el primer intento: muy probablemente Render estaba despertando del
+    // modo reposo. Avisamos y reintentamos una vez con todo el timeout de nuevo.
+    onStatus?.("waking");
+    try {
+      return await attempt();
+    } catch {
+      throw new Error(
+        "No se pudo conectar con el servidor. Puede estar despertando del modo reposo; " +
+        "esperá unos segundos y volvé a intentar.",
+      );
+    }
+  }
 }
 
 export async function generateDocx(posts: Post[]): Promise<void> {
