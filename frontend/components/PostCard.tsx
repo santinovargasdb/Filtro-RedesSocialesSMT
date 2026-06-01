@@ -145,20 +145,6 @@ export default function PostCard({ post, selected, onToggle }: PostCardProps) {
         >
           Ver publicación original →
         </a>
-        {post.video_url && (
-          <a
-            href={post.video_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={e => e.stopPropagation()}
-            style={{
-              fontSize: "11px", color: net.color, textDecoration: "none",
-              opacity: 0.7, display: "flex", alignItems: "center", gap: "4px",
-            }}
-          >
-            Ver video →
-          </a>
-        )}
       </div>
     </article>
   );

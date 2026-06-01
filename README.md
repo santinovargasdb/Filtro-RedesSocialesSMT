@@ -1,4 +1,3 @@
-Markdown
 # Monitor de Medios SMT
 
 Monitor institucional de medios y redes sociales para el Departamento de Prensa de SMATA (sindicato automotriz argentino).

@@ -373,30 +373,26 @@ def _process_with_gemini(
     termino: str,
     smata_mode: bool,
     keywords: list[str],
-    network_hint: str = "twitter",
 ) -> list[dict] | None:
     """
-    Pide a Gemini scores de relevancia y mapea cada resultado al shape PostOut.
-    Usa network_hint como fallback cuando la URL no permite detectar la red.
-    Retorna None ante errores upstream (no autenticación, 503, parseo) para que
-    fetch_posts no cachee un vacío espurio. [] indica vacío legítimo.
+    Pide a Gemini scores de relevancia para TODAS las redes en UNA sola llamada
+    (cada resultado trae su campo "network") y mapea cada uno al shape PostOut.
+    Una sola llamada en vez de una por red reduce ~66% el consumo de cuota.
+    Retorna None ante errores upstream (auth, 503, parseo) para que fetch_posts
+    no cachee un vacío espurio. [] indica vacío legítimo.
 
-    Aplica:
-    - Tope GEMINI_MAX_PER_NETWORK al lote enviado (reduce tokens y rate limit).
-    - Cascada de modelos GEMINI_MODELS con fallback en 429/503.
+    Cascada de modelos GEMINI_MODELS con fallback en 429/503.
     """
     api_key = os.getenv("GEMINI_API_KEY", "")
     if not api_key:
         print("ERROR: GEMINI_API_KEY no configurada.")
         return None
 
-    # Tope por red: los resultados ya vienen ordenados por relevancia de Google,
-    # así que quedarnos con los primeros N es razonable para un reporte de tendencias.
-    resultados_limitados = resultados[:GEMINI_MAX_PER_NETWORK]
-    if len(resultados_limitados) < len(resultados):
-        print(f"DEBUG Gemini[{network_hint}]: lote reducido {len(resultados)} -> {len(resultados_limitados)}")
-
-    network_label = _NETWORK_PROMPT_LABEL.get(network_hint, network_hint or "X (Twitter)")
+    # El tope por red ya se aplicó en fetch_posts antes de mergear; acá usamos
+    # el lote combinado tal cual.
+    resultados_limitados = resultados
+    redes_presentes = sorted({r.get("network", "") for r in resultados if r.get("network")})
+    redes_label = ", ".join(_NETWORK_PROMPT_LABEL.get(n, n) for n in redes_presentes) or "redes sociales"
     resultados_text = json.dumps(resultados_limitados, ensure_ascii=False, indent=2)
 
     # ── Bifurcación del criterio según el switch "Modo SMATA" ──────────────────
@@ -418,9 +414,9 @@ def _process_with_gemini(
             "4. Solo incluí posts con score >= 50."
         )
         tiktok_warning = ""
-        if network_hint == "tiktok":
+        if "tiktok" in redes_presentes:
             tiktok_warning = (
-                "\nATENCIÓN — REGLAS ADICIONALES PARA TIKTOK:\n"
+                "\nATENCIÓN — REGLAS ADICIONALES PARA LOS RESULTADOS CON network='tiktok':\n"
                 "Los snippets de TikTok en Google suelen ser pobres, en otros idiomas o "
                 "de cuentas internacionales sin relación con el sindicato SMATA ni con la "
                 "industria automotriz argentina. Aplicá estas reglas estrictas:\n"
@@ -452,18 +448,18 @@ def _process_with_gemini(
             "4. Incluí todos los posts que superen ese criterio amplio."
         )
         tiktok_warning = ""
-        if network_hint == "tiktok":
+        if "tiktok" in redes_presentes:
             tiktok_warning = (
-                "\nNOTA PARA TIKTOK:\n"
+                "\nNOTA PARA LOS RESULTADOS CON network='tiktok':\n"
                 "Los snippets de TikTok en Google suelen ser pobres o multi-idioma. "
                 "Penalizá con score bajo solo el contenido internacional fuera de LATAM, "
                 "el spam o los videos sin valor informativo. NO exijas mención de SMATA.\n"
             )
 
     prompt = f"""{system_role}
-Te paso resultados reales de Google sobre publicaciones en {network_label} relacionadas con el término: "{termino}".
+Te paso resultados reales de Google sobre publicaciones en {redes_label} relacionadas con el término: "{termino}".
 
-Cada resultado tiene: "title" (título del resultado en Google), "snippet" (extracto del post), "url" (link directo), "date" (fecha si está disponible).
+Cada resultado tiene: "title" (título del resultado en Google), "snippet" (extracto del post), "url" (link directo), "date" (fecha si está disponible) y "network" (la red social de origen: twitter, instagram o tiktok).
 
 Tu tarea:
 {criterio}{tiktok_warning}
@@ -486,12 +482,12 @@ Resultados de SerpAPI:
         scored, status = _call_gemini_model(model, api_key, prompt)
         if scored is not None:
             if idx > 0:
-                print(f"DEBUG Gemini[{network_hint}]: fallback EXITOSO con {model}")
+                print(f"DEBUG Gemini: fallback EXITOSO con {model}")
             break
         if status not in GEMINI_RETRY_STATUSES:
             break
         if idx + 1 < len(GEMINI_MODELS):
-            print(f"DEBUG Gemini[{network_hint}]: HTTP {status} en {model}, probando fallback {GEMINI_MODELS[idx + 1]}")
+            print(f"DEBUG Gemini: HTTP {status} en {model}, probando fallback {GEMINI_MODELS[idx + 1]}")
 
     if scored is None:
         return None
@@ -509,7 +505,7 @@ Resultados de SerpAPI:
         src = by_url.get(post_url, {})
         snippet = src.get("snippet", "") or src.get("title", "")
         date = src.get("date", "") or ""
-        network, author, author_url, post_id = _parse_post_url(post_url, hint_network=network_hint)
+        network, author, author_url, post_id = _parse_post_url(post_url, hint_network=src.get("network"))
 
         # Prioridad ABSOLUTA al post real: si la URL ya es un deep-link válido al
         # posteo (/p/, /reel/, /tv/ en IG; /video/ en TikTok; /status/ en X), la
@@ -548,7 +544,7 @@ Resultados de SerpAPI:
             dropped_by_floor[p["network"]] = dropped_by_floor.get(p["network"], 0) + 1
     if dropped_by_floor:
         details = ", ".join(f"{n}:{c}" for n, c in dropped_by_floor.items())
-        print(f"DEBUG filtro score floor en [{network_hint}]: descartados por red {{{details}}}")
+        print(f"DEBUG filtro score floor: descartados por red {{{details}}}")
 
     return filtered
 
@@ -570,6 +566,12 @@ def fetch_posts(
 
     print(f"DEBUG: fetch_posts termino='{termino}' redes={nets} smata_mode={smata_mode}")
 
+    # Barrido de entradas vencidas: evita que _CACHE crezca sin límite con
+    # búsquedas que no se repiten (la instancia de Render vive mucho tiempo).
+    now = time.time()
+    for k in [k for k, (ts, _) in _CACHE.items() if now - ts >= _CACHE_TTL_SECONDS]:
+        del _CACHE[k]
+
     cache_key = (
         termino,
         fecha_desde,
@@ -590,6 +592,9 @@ def fetch_posts(
     any_upstream_error = False
     total_serp_results = 0
 
+    # 1) SerpAPI por red (su cuota es amplia), aplicando el tope por red ANTES de
+    #    mergear. Cada resultado se etiqueta con su "network".
+    serp_merged: list[dict] = []
     for net in nets:
         resultados = _search_with_serpapi(
             termino,
@@ -603,14 +608,23 @@ def fetch_posts(
             continue
         if not resultados:
             continue
-        total_serp_results += len(resultados)
-        posts = _process_with_gemini(
-            resultados, termino, smata_mode, keywords or [], network_hint=net
-        )
+        lote = resultados[:GEMINI_MAX_PER_NETWORK]
+        if len(lote) < len(resultados):
+            print(f"DEBUG Gemini[{net}]: lote reducido {len(resultados)} -> {len(lote)}")
+        for r in lote:
+            item = dict(r)
+            item["network"] = net
+            serp_merged.append(item)
+        total_serp_results += len(lote)
+
+    # 2) UNA sola llamada a Gemini para TODAS las redes juntas (en vez de una por
+    #    red): reduce ~66% el consumo de la cuota free-tier.
+    if serp_merged:
+        posts = _process_with_gemini(serp_merged, termino, smata_mode, keywords or [])
         if posts is None:
             any_upstream_error = True
-            continue
-        all_posts.extend(posts)
+        else:
+            all_posts.extend(posts)
 
     print(f"DEBUG: total posts pre-dedupe = {len(all_posts)} (sobre {total_serp_results} resultados SerpAPI, upstream_error={any_upstream_error})")
 
