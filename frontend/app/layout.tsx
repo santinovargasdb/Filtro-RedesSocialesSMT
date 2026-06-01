@@ -39,8 +39,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               width: "36px", height: "36px", borderRadius: "8px",
               background: "linear-gradient(135deg, var(--smata-green-mid), var(--smata-green-light))",
               display: "flex", alignItems: "center", justifyContent: "center",
-              fontWeight: 800, fontSize: "14px", color: "white", letterSpacing: "-0.5px"
-            }}>SM</div>
+              fontWeight: 800, fontSize: "13px", color: "white", letterSpacing: "-0.5px"
+            }}>SMT</div>
             <div>
               <div style={{ fontWeight: 700, fontSize: "15px", letterSpacing: "0.02em", color: "white" }}>
                 Monitor de Medios SMT
