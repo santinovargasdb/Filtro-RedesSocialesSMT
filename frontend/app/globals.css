@@ -1,6 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
 :root {
+  /* Verdes institucionales y dorado: idénticos en ambos temas */
   --smata-green-dark:  #1B4D2E;
   --smata-green-mid:   #2E7D32;
   --smata-green-light: #4CAF50;
@@ -8,6 +9,36 @@
   --smata-gold:        #FFC107;
   --smata-gold-dark:   #F59E0B;
 
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+
+  --twitter-color:   #1DA1F2;
+  --instagram-color: #E1306C;
+  --tiktok-color:  #000000;
+
+  /* ── TEMA CLARO (por defecto): los negros pasan a blancos, verdes intactos ── */
+  --bg-primary:   #f6f9f6;
+  --bg-secondary: #ffffff;
+  --bg-card:      #ffffff;
+  --bg-card-hover:#eef5ef;
+  --border-color: rgba(46, 125, 50, 0.22);
+  --text-primary: #16281b;
+  --text-secondary: #3f5d43;
+  --text-muted:   #6f8f72;
+
+  --input-bg:       rgba(27, 77, 46, 0.05);
+  --input-bg-focus: rgba(27, 77, 46, 0.09);
+  --skeleton-bg:    rgba(27, 77, 46, 0.09);
+  --track-off:      rgba(27, 77, 46, 0.18);
+
+  --shadow-sm: 0 1px 3px rgba(27,77,46,0.10);
+  --shadow-md: 0 4px 16px rgba(27,77,46,0.12);
+  --shadow-lg: 0 8px 32px rgba(27,77,46,0.16);
+}
+
+/* ── TEMA OSCURO (toggle): restaura la paleta original ── */
+:root[data-theme="dark"] {
   --bg-primary:   #0f1a13;
   --bg-secondary: #152318;
   --bg-card:      #1c2e1f;
@@ -17,16 +48,14 @@
   --text-secondary: #a5c9a8;
   --text-muted:   #6b8f6e;
 
+  --input-bg:       rgba(255,255,255,0.05);
+  --input-bg-focus: rgba(255,255,255,0.08);
+  --skeleton-bg:    rgba(255,255,255,0.06);
+  --track-off:      rgba(255,255,255,0.10);
+
   --shadow-sm: 0 1px 3px rgba(0,0,0,0.4);
   --shadow-md: 0 4px 16px rgba(0,0,0,0.5);
   --shadow-lg: 0 8px 32px rgba(0,0,0,0.6);
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
-
-  --twitter-color:   #1DA1F2;
-  --instagram-color: #E1306C;
-  --tiktok-color:  #000000;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -117,7 +146,7 @@ body {
 }
 
 .form-input {
-  background: rgba(255,255,255,0.05);
+  background: var(--input-bg);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   padding: 9px 12px;
@@ -130,13 +159,13 @@ body {
 .form-input:focus {
   outline: none;
   border-color: var(--smata-green-light);
-  background: rgba(255,255,255,0.08);
+  background: var(--input-bg-focus);
 }
 .form-input::placeholder { color: var(--text-muted); }
 
 /* Tag input */
 .tag-input-wrapper {
-  background: rgba(255,255,255,0.05);
+  background: var(--input-bg);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   padding: 6px 10px;

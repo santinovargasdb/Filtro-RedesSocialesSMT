@@ -1,15 +1,21 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import ThemeToggle from "@/components/ThemeToggle";
 
 export const metadata: Metadata = {
   title: "SMATA Social Monitor v2",
   description: "Monitor institucional de redes sociales — Departamento de Prensa SMATA",
 };
 
+// Aplica el tema guardado ANTES del primer paint para evitar el flash claro→oscuro.
+// Por defecto: claro (no se setea data-theme). Solo aplica 'dark' si está guardado.
+const themeInitScript = `try{if(localStorage.getItem('theme')==='dark'){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}`;
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es">
       <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
@@ -36,21 +42,24 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               fontWeight: 800, fontSize: "14px", color: "white", letterSpacing: "-0.5px"
             }}>SM</div>
             <div>
-              <div style={{ fontWeight: 700, fontSize: "15px", letterSpacing: "0.02em" }}>
+              <div style={{ fontWeight: 700, fontSize: "15px", letterSpacing: "0.02em", color: "white" }}>
                 SMATA Social Monitor
               </div>
-              <div style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: 400 }}>
+              <div style={{ fontSize: "11px", color: "rgba(255,255,255,0.6)", fontWeight: 400 }}>
                 Departamento de Prensa · Monitor v2
               </div>
             </div>
           </div>
-          <div style={{
-            fontSize: "12px", color: "var(--text-muted)", fontWeight: 500,
-            padding: "4px 12px", borderRadius: "20px",
-            background: "rgba(255,255,255,0.05)",
-            border: "1px solid var(--border-color)"
-          }}>
-            {new Date().toLocaleDateString("es-AR", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <div style={{
+              fontSize: "12px", color: "rgba(255,255,255,0.75)", fontWeight: 500,
+              padding: "4px 12px", borderRadius: "20px",
+              background: "rgba(255,255,255,0.05)",
+              border: "1px solid rgba(255,255,255,0.15)"
+            }}>
+              {new Date().toLocaleDateString("es-AR", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+            </div>
+            <ThemeToggle />
           </div>
         </header>
         {children}

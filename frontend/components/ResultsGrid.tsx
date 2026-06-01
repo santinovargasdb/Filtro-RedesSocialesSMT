@@ -24,15 +24,15 @@ function SkeletonCard() {
       display: "flex", flexDirection: "column", gap: "12px",
     }}>
       <div style={{ display: "flex", justifyContent: "space-between" }}>
-        <div style={{ width: "90px", height: "22px", borderRadius: "4px", background: "rgba(255,255,255,0.06)", animation: "pulse 1.5s ease-in-out infinite" }} />
-        <div style={{ width: "60px", height: "22px", borderRadius: "20px", background: "rgba(255,255,255,0.06)", animation: "pulse 1.5s ease-in-out infinite" }} />
+        <div style={{ width: "90px", height: "22px", borderRadius: "4px", background: "var(--skeleton-bg)", animation: "pulse 1.5s ease-in-out infinite" }} />
+        <div style={{ width: "60px", height: "22px", borderRadius: "20px", background: "var(--skeleton-bg)", animation: "pulse 1.5s ease-in-out infinite" }} />
       </div>
       <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-        <div style={{ width: "30px", height: "30px", borderRadius: "50%", background: "rgba(255,255,255,0.06)", animation: "pulse 1.5s ease-in-out infinite" }} />
-        <div style={{ width: "120px", height: "14px", borderRadius: "4px", background: "rgba(255,255,255,0.06)", animation: "pulse 1.5s ease-in-out infinite" }} />
+        <div style={{ width: "30px", height: "30px", borderRadius: "50%", background: "var(--skeleton-bg)", animation: "pulse 1.5s ease-in-out infinite" }} />
+        <div style={{ width: "120px", height: "14px", borderRadius: "4px", background: "var(--skeleton-bg)", animation: "pulse 1.5s ease-in-out infinite" }} />
       </div>
       {[100, 80, 90, 60].map((w, i) => (
-        <div key={i} style={{ width: `${w}%`, height: "13px", borderRadius: "4px", background: "rgba(255,255,255,0.05)", animation: "pulse 1.5s ease-in-out infinite", animationDelay: `${i * 0.1}s` }} />
+        <div key={i} style={{ width: `${w}%`, height: "13px", borderRadius: "4px", background: "var(--skeleton-bg)", animation: "pulse 1.5s ease-in-out infinite", animationDelay: `${i * 0.1}s` }} />
       ))}
     </div>
   );
@@ -47,7 +47,7 @@ export default function ResultsGrid({ posts, selectedIds, onToggle, loading, sum
     return (
       <div style={{ flex: 1, padding: "24px", overflowY: "auto" }}>
         <div style={{ marginBottom: "20px" }}>
-          <div style={{ width: "200px", height: "16px", borderRadius: "4px", background: "rgba(255,255,255,0.07)", animation: "pulse 1.5s ease-in-out infinite" }} />
+          <div style={{ width: "200px", height: "16px", borderRadius: "4px", background: "var(--skeleton-bg)", animation: "pulse 1.5s ease-in-out infinite" }} />
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: "16px" }}>
           {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}

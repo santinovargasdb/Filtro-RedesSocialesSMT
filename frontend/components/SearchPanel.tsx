@@ -140,7 +140,7 @@ export default function SearchPanel({ onSearch, loading }: SearchPanelProps) {
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "space-between",
         padding: "12px", borderRadius: "var(--radius-sm)",
-        background: smataMode ? "rgba(255,193,7,0.1)" : "rgba(255,255,255,0.04)",
+        background: smataMode ? "rgba(255,193,7,0.1)" : "var(--input-bg)",
         border: `1px solid ${smataMode ? "rgba(255,193,7,0.4)" : "var(--border-color)"}`,
         transition: "all 0.2s", cursor: "pointer",
       }} onClick={() => setSmataMode(!smataMode)}>
@@ -154,7 +154,7 @@ export default function SearchPanel({ onSearch, loading }: SearchPanelProps) {
         </div>
         <div style={{
           width: "38px", height: "22px", borderRadius: "11px",
-          background: smataMode ? "var(--smata-gold)" : "rgba(255,255,255,0.1)",
+          background: smataMode ? "var(--smata-gold)" : "var(--track-off)",
           position: "relative", transition: "all 0.2s",
         }}>
           <div style={{
