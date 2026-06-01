@@ -14,13 +14,18 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  const [hasSearched, setHasSearched] = useState(false);
 
   const handleSearch = useCallback(async (params: SearchRequest) => {
+    // Limpieza inmediata del estado viejo antes de pegarle a la API, para que la
+    // pantalla no quede congelada con resultados/summary cacheados.
     setLoading(true);
     setError(null);
     setStatus(null);
     setPosts([]);
+    setSummary(undefined);
     setSelectedIds(new Set());
+    setHasSearched(true);
     try {
       const result = await searchPosts(params, (s) => {
         setStatus(
@@ -121,6 +126,7 @@ export default function Home() {
           onToggle={handleToggle}
           loading={loading}
           summary={summary}
+          hasSearched={hasSearched}
         />
       </div>
     </main>

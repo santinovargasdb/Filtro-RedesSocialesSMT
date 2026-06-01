@@ -8,6 +8,7 @@ interface ResultsGridProps {
   selectedIds: Set<string>;
   onToggle: (id: string) => void;
   loading: boolean;
+  hasSearched?: boolean;
   summary?: {
     total: number;
     by_network: Record<string, number>;
@@ -41,7 +42,7 @@ const NET_COLORS: Record<string, string> = {
   twitter: "#1DA1F2", instagram: "#E1306C", tiktok: "#000000",
 };
 
-export default function ResultsGrid({ posts, selectedIds, onToggle, loading, summary }: ResultsGridProps) {
+export default function ResultsGrid({ posts, selectedIds, onToggle, loading, summary, hasSearched }: ResultsGridProps) {
   if (loading) {
     return (
       <div style={{ flex: 1, padding: "24px", overflowY: "auto" }}>
@@ -63,9 +64,15 @@ export default function ResultsGrid({ posts, selectedIds, onToggle, loading, sum
         alignItems: "center", justifyContent: "center", gap: "16px",
         color: "var(--text-muted)", padding: "60px",
       }}>
-        <div style={{ fontSize: "48px", opacity: 0.3 }}>📡</div>
-        <div style={{ fontSize: "16px", fontWeight: 600 }}>Configurá tu búsqueda y presioná Buscar</div>
-        <div style={{ fontSize: "13px" }}>Los resultados rankeados aparecerán aquí</div>
+        <div style={{ fontSize: "48px", opacity: 0.3 }}>{hasSearched ? "🔍" : "📡"}</div>
+        <div style={{ fontSize: "16px", fontWeight: 600 }}>
+          {hasSearched ? "No se encontraron resultados" : "Configurá tu búsqueda y presioná Buscar"}
+        </div>
+        <div style={{ fontSize: "13px" }}>
+          {hasSearched
+            ? "Probá con otra keyword, sumá redes o apagá el Modo SMATA para un monitoreo más amplio."
+            : "Los resultados rankeados aparecerán aquí"}
+        </div>
       </div>
     );
   }
