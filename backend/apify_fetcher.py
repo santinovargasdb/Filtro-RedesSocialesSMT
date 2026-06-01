@@ -104,20 +104,20 @@ def _parse_tiktok_url(url: str) -> tuple[str, str, str]:
 
 
 def _tiktok_search_fallback_url(author: str, keyword: str) -> str | None:
-    """Link de búsqueda seguro dentro de TikTok, a prueba de fallos.
+    """Link de TikTok robusto, a prueba de fallos.
 
     SerpAPI a veces devuelve la URL del último video del creador en lugar del
-    post real que matcheó en texto. En vez de confiar en esa URL distorsionada,
-    apuntamos a una búsqueda dentro de la plataforma. Lógica por niveles:
+    post que matcheó en texto. Además, meter "@usuario keyword" en el buscador
+    interno marea al algoritmo (muestra perfiles sueltos o videos random en
+    Populares). Por eso evitamos la búsqueda mixta:
 
-    1. Autor + keyword  -> búsqueda dirigida  q=@usuario keyword
-    2. Solo keyword     -> búsqueda global    q=keyword   (cuando SerpAPI no pudo
-                           extraer el autor: viene vacío o como "?")
-    3. Solo autor       -> q=@usuario
-    4. Nada de lo anterior -> None.
+    1. Autor válido -> perfil directo del creador:  tiktok.com/@usuario
+                       (Prensa audita su feed al toque).
+    2. Sin autor (vacío o "?") -> búsqueda global SOLO por la keyword, sin arroba:
+                       tiktok.com/search?q=keyword
+    3. Nada de lo anterior -> None (el caller conserva la URL original).
 
-    NUNCA devuelve la URL base "tiktok.com" sin parámetros (eso mandaba al usuario
-    al FYP con videos random). El caller usa None para conservar la URL original.
+    NUNCA devuelve "tiktok.com" sin path/parámetros (eso mandaba al FYP random).
     """
     clean_author = (author or "").lstrip("@").strip()
     # SerpAPI deja "?" (u otros placeholders) cuando no logró extraer el autor.
@@ -125,16 +125,12 @@ def _tiktok_search_fallback_url(author: str, keyword: str) -> str | None:
         clean_author = ""
     clean_kw = (keyword or "").strip()
 
-    if clean_author and clean_kw:
-        q = quote(f"@{clean_author} {clean_kw}", safe="@")
-    elif clean_kw:
-        q = quote(clean_kw)
-    elif clean_author:
-        q = quote(f"@{clean_author}", safe="@")
-    else:
-        # Sin autor ni keyword no hay forma de armar una búsqueda con sentido.
-        return None
-    return f"https://www.tiktok.com/search?q={q}"
+    if clean_author:
+        return f"https://www.tiktok.com/@{quote(clean_author, safe='')}"
+    if clean_kw:
+        return f"https://www.tiktok.com/search?q={quote(clean_kw)}"
+    # Sin autor ni keyword no hay forma de armar un link con sentido.
+    return None
 
 
 def _detect_network_from_url(url: str) -> str | None:
