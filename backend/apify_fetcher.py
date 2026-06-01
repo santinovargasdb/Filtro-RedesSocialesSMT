@@ -44,6 +44,24 @@ GEMINI_RETRY_STATUSES = (429, 503, 404)
 # y bajar la chance de tocar el rate limit con multi-red activo.
 GEMINI_MAX_PER_NETWORK = 8
 
+# ── Piso de score por red ─────────────────────────────────────────────────────
+# Se aplica como filtro duro en Python después del scoring de Gemini.
+# TikTok tiene umbral más alto porque sus snippets en Google son pobres
+# (descripciones cortas / multi-idioma / cuentas extranjeras) y generan
+# falsos positivos con scores moderados.
+SCORE_FLOOR_DEFAULT = 30
+SCORE_FLOOR_BY_NETWORK = {
+    "tiktok": 50,
+}
+
+
+def _score_floor(network: str, strict_mode: bool) -> int:
+    base = SCORE_FLOOR_BY_NETWORK.get(network, SCORE_FLOOR_DEFAULT)
+    # En strict_mode global el piso nunca baja de 50.
+    if strict_mode:
+        return max(base, 50)
+    return base
+
 # ── Regex de URLs por red ─────────────────────────────────────────────────────
 _TWITTER_URL_RE = re.compile(r"(?:x|twitter)\.com/([^/?#]+)/status/(\d+)", re.IGNORECASE)
 _INSTAGRAM_USER_POST_RE = re.compile(r"instagram\.com/([^/?#]+)/(p|reel|tv)/([^/?#]+)", re.IGNORECASE)
@@ -323,6 +341,26 @@ def _process_with_gemini(
     resultados_text = json.dumps(resultados_limitados, ensure_ascii=False, indent=2)
     strict_note = "Solo incluí posts con score >= 50." if strict_mode else "Incluí todos los posts."
 
+    # Refuerzo agresivo solo para TikTok: la calidad del snippet en Google es baja
+    # y muchos resultados son de cuentas extranjeras o sin relación con SMATA.
+    tiktok_warning = ""
+    if network_hint == "tiktok":
+        tiktok_warning = (
+            "\nATENCIÓN — REGLAS ADICIONALES PARA TIKTOK:\n"
+            "Los snippets de TikTok en Google suelen ser pobres, en otros idiomas o "
+            "de cuentas internacionales sin relación con el sindicato SMATA ni con la "
+            "industria automotriz argentina. Aplicá estas reglas estrictas:\n"
+            "- Si el snippet NO menciona explícitamente al sindicato SMATA, a la "
+            "industria automotriz argentina, o a un actor argentino del rubro "
+            "(empresas como Ford/Volkswagen/Toyota Argentina, dirigentes gremiales, "
+            "políticos del sector, etc.) → score 0-15.\n"
+            "- Posts en otro idioma que no sea español rioplatense → score 0.\n"
+            "- Cuentas o handles que parezcan extranjeros o no tengan contexto "
+            "argentino → score 0-10.\n"
+            "- No asumas relevancia si el texto es muy corto o ambiguo: en caso de "
+            "duda, score bajo.\n"
+        )
+
     prompt = f"""Sos un asistente de análisis de redes sociales para el sindicato SMATA (sector automotriz argentino).
 Te paso resultados reales de Google sobre publicaciones en {network_label} relacionadas con el término: "{termino}".
 
@@ -331,7 +369,7 @@ Cada resultado tiene: "title" (título del resultado en Google), "snippet" (extr
 Tu tarea:
 1. Analizá cada resultado y determiná si es relevante para SMATA y el sector automotriz/sindical argentino.
 2. Asigná un score del 0 al 100 según su relevancia.
-3. {strict_note}
+3. {strict_note}{tiktok_warning}
 
 Devolvé ÚNICAMENTE un JSON válido, sin texto adicional ni bloques de código. Formato exacto:
 [
@@ -390,7 +428,21 @@ Resultados de SerpAPI:
             "video_url": None,
         })
 
-    return posts
+    # Filtro duro por piso de score: defiende contra falsos positivos que el
+    # prompt no logró bajar (especialmente en TikTok, donde aplicamos piso 50).
+    filtered: list[dict] = []
+    dropped_by_floor: dict[str, int] = {}
+    for p in posts:
+        floor = _score_floor(p["network"], strict_mode)
+        if p["relevance_score"] >= floor:
+            filtered.append(p)
+        else:
+            dropped_by_floor[p["network"]] = dropped_by_floor.get(p["network"], 0) + 1
+    if dropped_by_floor:
+        details = ", ".join(f"{n}:{c}" for n, c in dropped_by_floor.items())
+        print(f"DEBUG filtro score floor en [{network_hint}]: descartados por red {{{details}}}")
+
+    return filtered
 
 
 def fetch_posts(
