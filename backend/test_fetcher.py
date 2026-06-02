@@ -61,3 +61,44 @@ def test_geo_params_default_y_desconocido():
     assert ft._geo_params("") == ("ar", "es")
     # País sin idioma mapeado: gl pasa igual, hl cae a 'es'.
     assert ft._geo_params("za") == ("za", "es")
+
+
+# ── C.1 · _parse_result_date ──────────────────────────────────────────────────
+def test_parse_result_date_absolutas():
+    assert ft._parse_result_date("2024-06-02") == datetime.date(2024, 6, 2)
+    assert ft._parse_result_date("Jun 2, 2024") == datetime.date(2024, 6, 2)
+    assert ft._parse_result_date("2 ene 2023") == datetime.date(2023, 1, 2)
+    assert ft._parse_result_date("15/03/2024") == datetime.date(2024, 3, 15)
+
+
+def test_parse_result_date_relativas():
+    hoy = datetime.date.today()
+    assert ft._parse_result_date("hoy") == hoy
+    assert ft._parse_result_date("ayer") == hoy - datetime.timedelta(days=1)
+    assert ft._parse_result_date("hace 3 días") == hoy - datetime.timedelta(days=3)
+    assert ft._parse_result_date("hace un mes") == hoy - datetime.timedelta(days=30)
+    assert ft._parse_result_date("2 months ago") == hoy - datetime.timedelta(days=60)
+
+
+def test_parse_result_date_no_parseable():
+    assert ft._parse_result_date("") is None
+    assert ft._parse_result_date(None) is None
+    assert ft._parse_result_date("sin fecha clara") is None
+
+
+# ── C.1 · _filter_results_by_date (hard-stop best-effort) ─────────────────────
+def test_filter_results_by_date_destruye_viejos_conserva_sin_fecha():
+    items = [
+        {"url": "a", "date": "2024-01-01"},   # viejo -> destruido
+        {"url": "b", "date": "2026-05-30"},   # nuevo -> queda
+        {"url": "c", "date": ""},             # sin fecha -> se conserva (best-effort)
+        {"url": "d", "date": "ni idea"},      # no parseable -> se conserva
+    ]
+    out = ft._filter_results_by_date(items, "2026-01-01", "tiktok")
+    assert [o["url"] for o in out] == ["b", "c", "d"]
+
+
+def test_filter_results_by_date_fecha_floor_invalida_no_filtra():
+    items = [{"url": "a", "date": "2020-01-01"}]
+    # Si la fecha pedida es inválida, no se filtra nada.
+    assert ft._filter_results_by_date(items, "no-fecha", "instagram") == items

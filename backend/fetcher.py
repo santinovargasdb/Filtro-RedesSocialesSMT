@@ -8,6 +8,7 @@ solo devuelve dicts crudos {title, snippet, url, date}.
 Si cambia la conexión a la API externa o los parámetros de búsqueda -> SOLO acá.
 """
 import os
+import re
 import datetime
 import requests
 
@@ -67,6 +68,100 @@ def _date_to_qdr(fecha_desde: str | None) -> str | None:
     if delta_days <= 31:
         return "m"
     return None
+
+
+# ── C.1 · Hard-stop de fechas (best-effort) para IG/TikTok ────────────────────
+# SerpAPI (Google) NO scrapea IG/TikTok directo: devuelve un campo "date" que
+# suele venir vacío o en formato relativo ("hace 3 meses", "2 months ago") y a
+# veces absoluto ("Jun 2, 2024", "2024-06-02"). Parseamos lo que se pueda y
+# destruimos SOLO los posts que confirmamos anteriores a la fecha pedida. Los de
+# fecha vacía/no parseable se conservan para no vaciar la grilla.
+_SPANISH_MONTHS = {
+    "ene": 1, "feb": 2, "mar": 3, "abr": 4, "may": 5, "jun": 6,
+    "jul": 7, "ago": 8, "sep": 9, "set": 9, "oct": 10, "nov": 11, "dic": 12,
+}
+_ENGLISH_MONTHS = ["jan", "feb", "mar", "apr", "may", "jun",
+                   "jul", "aug", "sep", "oct", "nov", "dec"]
+_REL_UNIT_DAYS = {
+    "dia": 1, "día": 1, "dias": 1, "días": 1, "day": 1, "days": 1,
+    "semana": 7, "semanas": 7, "week": 7, "weeks": 7,
+    "mes": 30, "meses": 30, "month": 30, "months": 30,
+    "ano": 365, "año": 365, "anos": 365, "años": 365, "year": 365, "years": 365,
+}
+
+
+def _parse_result_date(raw: str) -> datetime.date | None:
+    """Best-effort: convierte el 'date' de SerpAPI a date. None si no se puede."""
+    if not raw:
+        return None
+    s = raw.strip().lower()
+    today = datetime.date.today()
+    if s in ("hoy", "today"):
+        return today
+    if s in ("ayer", "yesterday"):
+        return today - datetime.timedelta(days=1)
+    # Relativas: "hace 3 meses", "hace un mes", "3 months ago", "a week ago".
+    if "hace" in s or "ago" in s:
+        m = re.search(r"(\d+|un|una|a)\s+([a-záéíóúñ]+)", s)
+        if m:
+            qty_raw = m.group(1)
+            qty = 1 if qty_raw in ("un", "una", "a") else int(qty_raw)
+            unit = m.group(2)
+            days = _REL_UNIT_DAYS.get(unit) or _REL_UNIT_DAYS.get(unit.rstrip("s"))
+            if days:
+                return today - datetime.timedelta(days=qty * days)
+    # ISO 2024-06-02
+    m = re.search(r"(\d{4})-(\d{1,2})-(\d{1,2})", s)
+    if m:
+        try:
+            return datetime.date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        except ValueError:
+            return None
+    # dd/mm/yyyy (locale AR; si el primer número > 12 lo tratamos como día)
+    m = re.search(r"\b(\d{1,2})/(\d{1,2})/(\d{4})\b", s)
+    if m:
+        d_, mth, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        if mth > 12 and d_ <= 12:
+            d_, mth = mth, d_
+        try:
+            return datetime.date(y, mth, d_)
+        except ValueError:
+            return None
+    # "jun 2, 2024" / "2 jun 2024" / "jun 2024" (mes abreviado ES o EN)
+    month = next((num for name, num in _SPANISH_MONTHS.items() if re.search(rf"\b{name}", s)), None)
+    if month is None:
+        month = next((i for i, name in enumerate(_ENGLISH_MONTHS, 1) if re.search(rf"\b{name}", s)), None)
+    if month is not None:
+        ym = re.search(r"\b(\d{4})\b", s)
+        if ym:
+            year = int(ym.group(1))
+            # primer número de 1-2 dígitos = día (si existe); si no, día 1.
+            day = next((int(x) for x in re.findall(r"\b(\d{1,2})\b", s)), 1)
+            try:
+                return datetime.date(year, month, day)
+            except ValueError:
+                return None
+    return None
+
+
+def _filter_results_by_date(items: list[dict], fecha_desde: str, network: str) -> list[dict]:
+    """Destruye los items con fecha parseable ANTERIOR a fecha_desde. Conserva los
+    de fecha vacía/no parseable (best-effort, ver C.1)."""
+    try:
+        floor = datetime.date.fromisoformat(fecha_desde)
+    except (ValueError, TypeError):
+        return items
+    kept: list[dict] = []
+    dropped = 0
+    for it in items:
+        d = _parse_result_date(it.get("date", ""))
+        if d is not None and d < floor:
+            dropped += 1
+            continue
+        kept.append(it)
+    if dropped:
+        print(f"DEBUG hard-stop fecha[{network}]: {dropped} posts anteriores a {fecha_desde} destruidos")
+    return kept
 
 
 def _build_accounts_filter(accounts: list[str] | None) -> str:
@@ -173,5 +268,10 @@ def search_serpapi(
     results = _clean_serp_results(raw_results)
     if len(results) != len(raw_results):
         print(f"DEBUG: SerpAPI[{network}] limpieza: {len(raw_results)} -> {len(results)} (vacíos/duplicados descartados)")
+    # C.1 · Hard-stop de fechas best-effort para IG/TikTok: el qdr de SerpAPI es
+    # grueso (día/semana/mes) y deja colar posts viejos (p. ej. 2024). Acá los
+    # destruimos en código si la fecha parseable es anterior a la pedida.
+    if network in ("instagram", "tiktok") and fecha_desde:
+        results = _filter_results_by_date(results, fecha_desde, network)
     print(f"DEBUG: SerpAPI[{network}] devolvió {len(results)} resultados útiles para '{termino}'.")
     return results

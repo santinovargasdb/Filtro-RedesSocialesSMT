@@ -128,7 +128,8 @@ def test_process_una_sola_llamada_para_todas_las_redes(monkeypatch):
     serp = [
         {"title": "t", "snippet": "smata", "url": "https://x.com/u/status/1", "date": "", "network": "twitter"},
         {"title": "t", "snippet": "smata", "url": "https://www.instagram.com/u/p/AAA/", "date": "", "network": "instagram"},
-        {"title": "t", "snippet": "smata", "url": "https://www.tiktok.com/@creador/video/123", "date": "", "network": "tiktok"},
+        # TikTok con texto real (no basura): sobrevive la purga C.2 y testea la URL.
+        {"title": "t", "snippet": "Asamblea de SMATA en la terminal automotriz", "url": "https://www.tiktok.com/@creador/video/123", "date": "", "network": "tiktok"},
     ]
     posts = nz._process_with_gemini(serp, "smata", smata_mode=False, keywords=["smata"])
 
@@ -152,10 +153,44 @@ def test_process_tiktok_sin_deeplink_cae_al_fallback(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "test")
     monkeypatch.setattr(nz, "_call_gemini_model",
                         _fake_scored([{"id": "Post_0", "score": 90, "razon": "x"}]))
-    serp = [{"title": "", "snippet": "x", "url": "https://www.tiktok.com/@creador", "date": "", "network": "tiktok"}]
+    serp = [{"title": "", "snippet": "Trabajadores de SMATA reclaman en la planta", "url": "https://www.tiktok.com/@creador", "date": "", "network": "tiktok"}]
     posts = nz._process_with_gemini(serp, "smata", smata_mode=False, keywords=[])
     # URL de perfil (sin /video/): no es deep-link, se reemplaza por búsqueda segura.
     assert posts[0]["post_url"].startswith("https://www.tiktok.com/search?q=")
+
+
+# ── C.2 · Purga de basura de TikTok ───────────────────────────────────────────
+def test_is_tiktok_garbage_detecta_ruido():
+    assert nz._is_tiktok_garbage("")               # vacío
+    assert nz._is_tiktok_garbage("   ")            # solo espacios
+    assert nz._is_tiktok_garbage("smata")          # demasiado corto
+    assert nz._is_tiktok_garbage("sonido original")           # solo música
+    assert nz._is_tiktok_garbage("#fyp #parati #viral #foryou")  # solo hashtags
+    assert nz._is_tiktok_garbage("1.2M views")     # solo conteo
+    assert nz._is_tiktok_garbage("TikTok")         # boilerplate
+
+
+def test_is_tiktok_garbage_respeta_contenido_real():
+    assert not nz._is_tiktok_garbage("Asamblea de SMATA en la terminal automotriz")
+    # música + texto real suficiente: NO es basura
+    assert not nz._is_tiktok_garbage("Paro de SMATA en Córdoba, mecánicos en la calle · sonido original")
+
+
+def test_process_purga_basura_tiktok(monkeypatch):
+    """Un TikTok con snippet basura (solo música) se destruye aunque Gemini lo puntúe alto."""
+    monkeypatch.setenv("GEMINI_API_KEY", "test")
+    monkeypatch.setattr(nz, "_call_gemini_model", _fake_scored([
+        {"id": "Post_0", "score": 95, "razon": "x"},
+        {"id": "Post_1", "score": 95, "razon": "x"},
+    ]))
+    serp = [
+        {"title": "", "snippet": "sonido original", "url": "https://www.tiktok.com/@u/video/1", "date": "", "network": "tiktok"},
+        {"title": "", "snippet": "Paro de SMATA en la planta de Pacheco", "url": "https://www.tiktok.com/@u/video/2", "date": "", "network": "tiktok"},
+    ]
+    posts = nz._process_with_gemini(serp, "smata", smata_mode=False, keywords=[])
+    # El de música se purga; el de contenido real sobrevive.
+    assert len(posts) == 1
+    assert posts[0]["post_url"] == "https://www.tiktok.com/@u/video/2"
 
 
 def test_process_mapea_por_id_y_respeta_url_original(monkeypatch):

@@ -196,6 +196,50 @@ def _level_from_score(score: int) -> str:
     return "baja"
 
 
+# ── C.2 · Purga de basura de TikTok ───────────────────────────────────────────
+# Los snippets de TikTok en Google suelen ser ruido que ensucia la grilla de
+# Prensa: posteos vacíos, solo "sonido original"/música, solo hashtags/menciones,
+# o conteos sueltos (likes/views). Los purgamos en código ANTES de mostrarlos.
+_TIKTOK_MUSIC_RE = re.compile(
+    r"(sonido original|original sound|canci[oó]n original|música original|♬|🎵|🎶)",
+    re.IGNORECASE,
+)
+_TIKTOK_BOILERPLATE_RE = re.compile(
+    r"^\s*(tiktok|ver en tiktok|mira(?:r)?\s+(?:el|este)\s+video|"
+    r"watch .*?on tiktok|videos?\s+de\s+tiktok|explora\s+los\s+videos?)\s*[.·:\-]*\s*$",
+    re.IGNORECASE,
+)
+_TIKTOK_COUNT_ONLY_RE = re.compile(
+    r"^[\s\d.,kKmM]+\s*(likes?|me gusta|views?|vistas|reproducciones|"
+    r"followers?|seguidores|fans|comentarios?|comments?)?\s*$",
+    re.IGNORECASE,
+)
+
+
+def _is_tiktok_garbage(snippet: str, title: str = "") -> bool:
+    """True si el contenido de un resultado de TikTok es ruido sin valor de prensa."""
+    text = (snippet or "").strip()
+    if not text:
+        return True
+    if len(text) < 12:  # demasiado corto para tener valor informativo
+        return True
+    low = text.lower()
+    # Música/sonido original con muy poco texto alfabético real → basura.
+    if _TIKTOK_MUSIC_RE.search(low):
+        alpha = re.sub(r"[^a-záéíóúñ ]", "", low).strip()
+        if len(alpha) < 25:
+            return True
+    if _TIKTOK_BOILERPLATE_RE.match(low):
+        return True
+    if _TIKTOK_COUNT_ONLY_RE.match(text):
+        return True
+    # Solo hashtags y/o menciones, sin ninguna palabra real (3+ letras).
+    sin_tags = re.sub(r"[#@]\S+", "", text).strip()
+    if not re.search(r"[a-záéíóúñ]{3,}", sin_tags, re.IGNORECASE):
+        return True
+    return False
+
+
 def _find_matched_terms(text: str, keywords: list[str]) -> list[str]:
     if not text or not keywords:
         return []
@@ -394,6 +438,7 @@ Publicaciones a evaluar:
         return None
 
     posts: list[dict] = []
+    tiktok_garbage = 0
     for item in scored:
         # Mapeo de retorno por ID: recuperamos el post crudo ORIGINAL por su id.
         # La URL sale de NUESTROS datos (no de lo que devuelve Gemini), así la
@@ -417,6 +462,13 @@ Publicaciones a evaluar:
         snippet = texto_ia or snippet_src
         date = src.get("date", "") or ""
         network, author, author_url, post_id = _parse_post_url(post_url, hint_network=src.get("network"))
+
+        # C.2: purga de basura de TikTok (vacíos, solo música, solo hashtags,
+        # conteos sueltos). Se evalúa sobre el texto crudo de SerpAPI, no sobre la
+        # traducción, para detectar el ruido de origen.
+        if network == "tiktok" and _is_tiktok_garbage(snippet_src, src.get("title", "")):
+            tiktok_garbage += 1
+            continue
 
         # Prioridad ABSOLUTA al post real: si la URL ya es un deep-link válido al
         # posteo (/p/, /reel/, /tv/ en IG; /video/ en TikTok; /status/ en X), la
@@ -442,6 +494,9 @@ Publicaciones a evaluar:
             "matched_terms": _find_matched_terms(snippet, keywords),
             "video_url": None,
         })
+
+    if tiktok_garbage:
+        print(f"DEBUG purga TikTok (C.2): {tiktok_garbage} posteos basura (vacío/música/hashtags/conteos) destruidos")
 
     # Filtro duro por piso de score: defiende contra falsos positivos que el
     # prompt no logró bajar (especialmente en TikTok, donde aplicamos piso 50).
