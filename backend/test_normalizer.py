@@ -221,6 +221,66 @@ def test_process_sin_api_key_devuelve_none(monkeypatch):
     assert nz._process_with_gemini(serp, "smata", smata_mode=False, keywords=[]) is None
 
 
+# ── Fase E · Rotación a la API Key secundaria por cuota ───────────────────────
+_SERP_OK = [{"title": "", "snippet": "Paro de SMATA en la planta de Pacheco",
+             "url": "https://x.com/u/status/1", "date": "", "network": "twitter"}]
+
+
+def test_process_rota_a_secundaria_en_429(monkeypatch):
+    """La principal agota cuota (429); rota a la secundaria y el batch sale OK."""
+    monkeypatch.setenv("GEMINI_API_KEY", "primary")
+    monkeypatch.setenv("GEMINI_API_KEY_SECONDARY", "secondary")
+    keys_usadas = []
+
+    def fake(model, api_key, prompt):
+        keys_usadas.append(api_key)
+        if api_key == "primary":
+            return (None, 429)  # cuota agotada en todos los modelos
+        return ([{"id": "Post_0", "score": 90, "razon": "x"}], None)
+
+    monkeypatch.setattr(nz, "_call_gemini_model", fake)
+    posts = nz._process_with_gemini(_SERP_OK, "smata", smata_mode=False, keywords=[])
+    assert posts and posts[0]["relevance_score"] == 90
+    assert "primary" in keys_usadas and "secondary" in keys_usadas  # rotó
+
+
+def test_process_rota_tambien_en_503(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "primary")
+    monkeypatch.setenv("GEMINI_API_KEY_SECONDARY", "secondary")
+
+    def fake(model, api_key, prompt):
+        if api_key == "primary":
+            return (None, 503)
+        return ([{"id": "Post_0", "score": 80, "razon": "x"}], None)
+
+    monkeypatch.setattr(nz, "_call_gemini_model", fake)
+    posts = nz._process_with_gemini(_SERP_OK, "smata", smata_mode=False, keywords=[])
+    assert posts and posts[0]["relevance_score"] == 80
+
+
+def test_process_sin_secundaria_no_rota(monkeypatch):
+    """Sin GEMINI_API_KEY_SECONDARY, una cuota agotada devuelve None (sin romper)."""
+    monkeypatch.setenv("GEMINI_API_KEY", "primary")
+    monkeypatch.delenv("GEMINI_API_KEY_SECONDARY", raising=False)
+    monkeypatch.setattr(nz, "_call_gemini_model", lambda m, k, p: (None, 429))
+    assert nz._process_with_gemini(_SERP_OK, "smata", smata_mode=False, keywords=[]) is None
+
+
+def test_process_no_rota_si_error_no_es_cuota(monkeypatch):
+    """Un error que NO es de cuota (red/parseo) no dispara la rotación de llave."""
+    monkeypatch.setenv("GEMINI_API_KEY", "primary")
+    monkeypatch.setenv("GEMINI_API_KEY_SECONDARY", "secondary")
+    keys_usadas = []
+
+    def fake(model, api_key, prompt):
+        keys_usadas.append(api_key)
+        return (None, None)  # error de red/parseo, no cuota
+
+    monkeypatch.setattr(nz, "_call_gemini_model", fake)
+    assert nz._process_with_gemini(_SERP_OK, "smata", smata_mode=False, keywords=[]) is None
+    assert "secondary" not in keys_usadas  # NO rotó
+
+
 # ── Bifurcación del prompt según smata_mode ───────────────────────────────────
 def test_prompt_bifurca_estricto_vs_amplio(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "test")

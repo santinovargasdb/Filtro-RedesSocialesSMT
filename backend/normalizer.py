@@ -294,6 +294,26 @@ def _call_gemini_model(model: str, api_key: str, prompt: str) -> tuple[list | No
         return None, None
 
 
+def _run_gemini_cascade(prompt: str, api_key: str) -> tuple[list | None, int | None]:
+    """Recorre la cascada GEMINI_MODELS con UNA api_key. Devuelve (scored, last_status):
+    el primer modelo que responde OK gana; solo se prueba el siguiente si el anterior
+    dio 429/503/404. `last_status` queda con el código del último error (para que el
+    caller decida si rota a la API Key secundaria)."""
+    scored: list | None = None
+    status: int | None = None
+    for idx, model in enumerate(GEMINI_MODELS):
+        scored, status = _call_gemini_model(model, api_key, prompt)
+        if scored is not None:
+            if idx > 0:
+                print(f"DEBUG Gemini: fallback EXITOSO con {model}")
+            return scored, status
+        if status not in GEMINI_RETRY_STATUSES:
+            return None, status
+        if idx + 1 < len(GEMINI_MODELS):
+            print(f"DEBUG Gemini: HTTP {status} en {model}, probando fallback {GEMINI_MODELS[idx + 1]}")
+    return None, status
+
+
 def _process_with_gemini(
     resultados: list[dict],
     termino: str,
@@ -307,7 +327,8 @@ def _process_with_gemini(
     Retorna None ante errores upstream (auth, 503, parseo) para que fetch_posts
     no cachee un vacío espurio. [] indica vacío legítimo.
 
-    Cascada de modelos GEMINI_MODELS con fallback en 429/503.
+    Cascada de modelos GEMINI_MODELS con fallback en 429/503, y rotación a la API
+    Key secundaria (GEMINI_API_KEY_SECONDARY) si la cuota principal se agota.
     """
     api_key = os.getenv("GEMINI_API_KEY", "")
     if not api_key:
@@ -421,19 +442,22 @@ Devolvé ÚNICAMENTE un JSON válido (sin texto adicional ni bloques de código)
 Publicaciones a evaluar:
 {resultados_text}"""
 
-    # Cascada de modelos: el primero que responda OK gana. Solo se intenta el
-    # próximo si el anterior fue 429 (rate limit) o 503 (saturación).
-    scored: list | None = None
-    for idx, model in enumerate(GEMINI_MODELS):
-        scored, status = _call_gemini_model(model, api_key, prompt)
-        if scored is not None:
-            if idx > 0:
-                print(f"DEBUG Gemini: fallback EXITOSO con {model}")
-            break
-        if status not in GEMINI_RETRY_STATUSES:
-            break
-        if idx + 1 < len(GEMINI_MODELS):
-            print(f"DEBUG Gemini: HTTP {status} en {model}, probando fallback {GEMINI_MODELS[idx + 1]}")
+    # Cascada de modelos con la API Key PRINCIPAL: el primero que responda OK gana.
+    scored, status = _run_gemini_cascade(prompt, api_key)
+
+    # Fase E · Contingencia: si la cuota principal se agotó (429 rate limit / 503
+    # saturación) y quedó sin resultado, rotamos a la API Key SECUNDARIA y
+    # reintentamos el MISMO batch al toque. El contrato JSON de salida no cambia:
+    # `scored` sigue siendo la lista de {id, score, texto, razon} que mapeamos abajo.
+    if scored is None and status in (429, 503):
+        secondary_key = os.getenv("GEMINI_API_KEY_SECONDARY", "")
+        if secondary_key:
+            print("Cuota principal agotada. Rotando a la API de SMATA...")
+            scored, status = _run_gemini_cascade(prompt, secondary_key)
+            if scored is not None:
+                print("DEBUG Gemini: rotación a API secundaria EXITOSA.")
+        else:
+            print("DEBUG Gemini: cuota principal agotada y GEMINI_API_KEY_SECONDARY no configurada — sin rotación.")
 
     if scored is None:
         return None
