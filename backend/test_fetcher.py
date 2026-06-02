@@ -102,3 +102,40 @@ def test_filter_results_by_date_fecha_floor_invalida_no_filtra():
     items = [{"url": "a", "date": "2020-01-01"}]
     # Si la fecha pedida es inválida, no se filtra nada.
     assert ft._filter_results_by_date(items, "no-fecha", "instagram") == items
+
+
+# ── Fallback geográfico de SerpAPI ────────────────────────────────────────────
+class _FakeResp:
+    def __init__(self, data):
+        self._data = data
+    def raise_for_status(self):
+        pass
+    def json(self):
+        return self._data
+
+
+def test_serpapi_geo_fallback_recupera_sin_hl(monkeypatch):
+    """Si la petición con región (hl) falla, reintenta sin hl y recupera."""
+    monkeypatch.setattr(ft, "SERPAPI_API_KEY", "k")
+    intentos = []
+
+    def fake_get(url, params, timeout):
+        intentos.append(dict(params))
+        if "hl" in params:  # primer intento (región completa) -> falla
+            raise ft.requests.exceptions.ConnectionError("boom región")
+        return _FakeResp({"organic_results": [{"title": "t", "snippet": "s", "link": "https://x/1", "date": ""}]})
+
+    monkeypatch.setattr(ft.requests, "get", fake_get)
+    out = ft.search_serpapi("noticias", network="twitter", country="jp")
+    assert out and out[0]["url"] == "https://x/1"
+    assert any("hl" in p for p in intentos) and any("hl" not in p for p in intentos)
+
+
+def test_serpapi_geo_fallback_todo_falla_devuelve_none(monkeypatch):
+    monkeypatch.setattr(ft, "SERPAPI_API_KEY", "k")
+
+    def fake_get(url, params, timeout):
+        raise ft.requests.exceptions.ConnectionError("siempre falla")
+
+    monkeypatch.setattr(ft.requests, "get", fake_get)
+    assert ft.search_serpapi("noticias", network="twitter", country="jp") is None

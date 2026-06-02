@@ -281,6 +281,55 @@ def test_process_no_rota_si_error_no_es_cuota(monkeypatch):
     assert "secondary" not in keys_usadas  # NO rotó
 
 
+# ── fetch_posts · Fallback red por red cuando el batch combinado falla ────────
+def _post(net):
+    return {"id": net, "network": net, "author": "a", "author_url": "", "text": "s",
+            "date": "", "post_url": f"https://x/{net}", "relevance_score": 90,
+            "relevance_level": "alta", "matched_terms": [], "video_url": None}
+
+
+def test_fetch_posts_fallback_red_por_red(monkeypatch):
+    """Si el batch combinado (multi-red) falla, reintenta red por red y recupera."""
+    monkeypatch.setenv("GEMINI_API_KEY", "k")
+    nz._CACHE.clear()
+
+    def fake_serp(termino, network, max_results, fecha_desde, accounts, country):
+        return [{"title": "t", "snippet": "s", "url": f"https://x/{network}", "date": ""}]
+
+    def fake_proc(resultados, termino, smata_mode, keywords):
+        nets = {r.get("network") for r in resultados}
+        if len(nets) > 1:
+            return None  # el batch combinado falla (timeout/truncado)
+        return [_post(next(iter(nets)))]
+
+    monkeypatch.setattr(nz, "search_serpapi", fake_serp)
+    monkeypatch.setattr(nz, "_process_with_gemini", fake_proc)
+    posts = nz.fetch_posts("noticias", networks=["twitter", "instagram", "tiktok"], country="jp")
+    assert sorted(p["network"] for p in posts) == ["instagram", "tiktok", "twitter"]
+
+
+def test_fetch_posts_fallback_parcial_no_rompe(monkeypatch):
+    """Si en el fallback una red falla pero otra anda, devuelve resultados parciales
+    (no 503)."""
+    monkeypatch.setenv("GEMINI_API_KEY", "k")
+    nz._CACHE.clear()
+
+    def fake_serp(termino, network, max_results, fecha_desde, accounts, country):
+        return [{"title": "t", "snippet": "s", "url": f"https://x/{network}", "date": ""}]
+
+    def fake_proc(resultados, termino, smata_mode, keywords):
+        nets = {r.get("network") for r in resultados}
+        if len(nets) > 1:
+            return None                      # batch combinado falla
+        net = next(iter(nets))
+        return None if net == "tiktok" else [_post(net)]  # tiktok sigue fallando
+
+    monkeypatch.setattr(nz, "search_serpapi", fake_serp)
+    monkeypatch.setattr(nz, "_process_with_gemini", fake_proc)
+    posts = nz.fetch_posts("noticias", networks=["twitter", "tiktok"], country="jp")
+    assert sorted(p["network"] for p in posts) == ["twitter"]  # parcial, sin romper
+
+
 # ── Bifurcación del prompt según smata_mode ───────────────────────────────────
 def test_prompt_bifurca_estricto_vs_amplio(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "test")

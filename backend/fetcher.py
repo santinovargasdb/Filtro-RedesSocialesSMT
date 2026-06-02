@@ -203,6 +203,33 @@ def _clean_serp_results(items: list[dict]) -> list[dict]:
     return out
 
 
+def _serpapi_get_with_geo_fallback(params: dict, network: str) -> dict | None:
+    """Pega a SerpAPI con degradación geográfica progresiva. Si la petición con los
+    parámetros de región falla (timeout / 4xx-5xx de SerpAPI por combinación de
+    región/idioma), reintenta quitando 'hl' y luego 'gl'+'hl', en vez de romper.
+    Así una búsqueda internacional nunca deja al backend sin respuesta por culpa de
+    los parámetros geográficos. Devuelve el JSON o None si TODO falló."""
+    intentos = [("región completa", params)]
+    if "hl" in params or "gl" in params:
+        sin_hl = {k: v for k, v in params.items() if k != "hl"}
+        intentos.append(("sin hl", sin_hl))
+        sin_geo = {k: v for k, v in sin_hl.items() if k != "gl"}
+        intentos.append(("sin gl/hl", sin_geo))
+
+    for i, (etiqueta, p) in enumerate(intentos):
+        try:
+            response = requests.get(SERPAPI_URL, params=p, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+            if i > 0:
+                print(f"DEBUG: SerpAPI[{network}] recuperado en fallback geo '{etiqueta}'.")
+            return data
+        except requests.exceptions.RequestException as e:
+            print(f"ERROR: SerpAPI[{network}] intento '{etiqueta}' falló: {e}")
+            continue
+    return None
+
+
 def search_serpapi(
     termino: str,
     network: str = "twitter",
@@ -244,12 +271,8 @@ def search_serpapi(
     if qdr:
         params["tbs"] = f"qdr:{qdr}"
 
-    try:
-        response = requests.get(SERPAPI_URL, params=params, timeout=30)
-        response.raise_for_status()
-        data = response.json()
-    except requests.exceptions.RequestException as e:
-        print(f"ERROR: Fallo en la petición a SerpAPI[{network}]: {e}")
+    data = _serpapi_get_with_geo_fallback(params, network)
+    if data is None:
         return None
 
     organic_results = data.get("organic_results", [])

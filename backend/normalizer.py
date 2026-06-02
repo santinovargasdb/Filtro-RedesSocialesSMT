@@ -617,10 +617,33 @@ def fetch_posts(
     #    red): reduce ~66% el consumo de la cuota free-tier.
     if serp_merged:
         posts = _process_with_gemini(serp_merged, termino, smata_mode, keywords or [])
-        if posts is None:
-            any_upstream_error = True
-        else:
+        if posts is not None:
             all_posts.extend(posts)
+        else:
+            # El batch combinado falló (None). Caso típico: búsquedas
+            # internacionales donde la traducción (B.5) infla la respuesta de
+            # Gemini y dispara timeout o JSON truncado; un timeout NO rota a la
+            # llave secundaria (status None). Antes de rendirnos con un 503,
+            # reintentamos RED POR RED: lotes más chicos (máx GEMINI_MAX_PER_NETWORK)
+            # son más rápidos y menos propensos a truncarse. Si alguna red sale OK,
+            # el usuario ve resultados parciales en vez de un error.
+            print("DEBUG: batch combinado a Gemini falló — fallback red por red.")
+            redes_en_lote = sorted({r.get("network") for r in serp_merged})
+            recuperado_alguna = False
+            for net in redes_en_lote:
+                lote_net = [r for r in serp_merged if r.get("network") == net]
+                if not lote_net:
+                    continue
+                posts_net = _process_with_gemini(lote_net, termino, smata_mode, keywords or [])
+                if posts_net is None:
+                    any_upstream_error = True
+                    print(f"DEBUG: fallback Gemini[{net}] también falló.")
+                else:
+                    recuperado_alguna = True
+                    all_posts.extend(posts_net)
+                    print(f"DEBUG: fallback Gemini[{net}] recuperó {len(posts_net)} posts.")
+            if recuperado_alguna:
+                print("DEBUG: fallback red por red recuperó resultados parciales.")
 
     print(f"DEBUG: total posts pre-dedupe = {len(all_posts)} (sobre {total_serp_results} resultados SerpAPI, upstream_error={any_upstream_error})")
 
