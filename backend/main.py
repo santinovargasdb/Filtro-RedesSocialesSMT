@@ -62,7 +62,7 @@ def read_root():
     commit = os.environ.get("RENDER_GIT_COMMIT", "dev")
     return {
         "status": "ok",
-        "message": "Backend Monitor de Medios SMT corriendo",
+        "message": "Backend Monitor de Medios SMATA corriendo",
         "commit": commit[:7] if commit else "dev",
     }
 

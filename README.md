@@ -1,4 +1,4 @@
-# Monitor de Medios SMT
+# Monitor de Medios SMATA
 
 Monitor institucional de medios y redes sociales para el Departamento de Prensa de SMATA (sindicato automotriz argentino). Busca publicaciones en X/Twitter, Instagram y TikTok, las puntúa por relevancia con IA y arma informes en Word.
 

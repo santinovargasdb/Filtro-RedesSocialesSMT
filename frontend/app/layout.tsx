@@ -3,7 +3,7 @@ import "./globals.css";
 import ThemeToggle from "@/components/ThemeToggle";
 
 export const metadata: Metadata = {
-  title: "Monitor de Medios SMT",
+  title: "Monitor de Medios SMATA",
   description: "Monitor institucional de medios y redes sociales — Departamento de Prensa SMATA",
 };
 
@@ -39,11 +39,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               width: "36px", height: "36px", borderRadius: "8px",
               background: "linear-gradient(135deg, var(--smata-green-mid), var(--smata-green-light))",
               display: "flex", alignItems: "center", justifyContent: "center",
-              fontWeight: 800, fontSize: "13px", color: "white", letterSpacing: "-0.5px"
-            }}>SMT</div>
+              fontWeight: 800, fontSize: "11px", color: "white", letterSpacing: "-0.5px"
+            }}>SMATA</div>
             <div>
               <div style={{ fontWeight: 700, fontSize: "15px", letterSpacing: "0.02em", color: "white" }}>
-                Monitor de Medios SMT
+                Monitor de Medios SMATA
               </div>
               <div style={{ fontSize: "11px", color: "rgba(255,255,255,0.6)", fontWeight: 400 }}>
                 Departamento de Prensa · SMATA
