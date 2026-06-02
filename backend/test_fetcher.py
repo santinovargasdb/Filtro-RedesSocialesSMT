@@ -46,3 +46,18 @@ def test_date_to_qdr_rangos():
     assert ft._date_to_qdr((hoy - datetime.timedelta(days=5)).isoformat()) == "w"
     assert ft._date_to_qdr((hoy - datetime.timedelta(days=20)).isoformat()) == "m"
     assert ft._date_to_qdr((hoy - datetime.timedelta(days=200)).isoformat()) is None
+
+
+# ── B.4 · _geo_params ─────────────────────────────────────────────────────────
+def test_geo_params_mapea_pais_a_gl_hl():
+    assert ft._geo_params("ar") == ("ar", "es")
+    assert ft._geo_params("br") == ("br", "pt")
+    assert ft._geo_params("us") == ("us", "en")
+    assert ft._geo_params("ES") == ("es", "es")   # normaliza a minúsculas
+
+
+def test_geo_params_default_y_desconocido():
+    assert ft._geo_params(None) == ("ar", "es")     # default Argentina
+    assert ft._geo_params("") == ("ar", "es")
+    # País sin idioma mapeado: gl pasa igual, hl cae a 'es'.
+    assert ft._geo_params("za") == ("za", "es")

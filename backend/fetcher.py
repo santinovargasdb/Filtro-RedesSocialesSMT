@@ -18,6 +18,32 @@ SERPAPI_URL = "https://serpapi.com/search"
 # ── Redes soportadas ──────────────────────────────────────────────────────────
 SUPPORTED_NETWORKS = ("twitter", "instagram", "tiktok")
 
+# ── Geolocalización (parámetro 'gl' de SerpAPI) ───────────────────────────────
+# El frontend manda el país como código ISO 3166-1 alpha-2 (ar, br, us, es, ...),
+# que es exactamente el formato que espera 'gl'. Por eso NO mantenemos una lista
+# hardcodeada de países: cualquier código ISO válido funciona como gl.
+#
+# 'hl' (idioma de la interfaz de Google) sí conviene alinearlo al país para traer
+# resultados nativos de esa región. Solo mapeamos los idiomas más comunes; para
+# cualquier país no listado caemos a "es" (el operador lee español y, además, la
+# Capa 3 traduce al español todo lo que venga en otro idioma — ver B.5).
+_DEFAULT_GL = "ar"
+_HL_BY_GL = {
+    "ar": "es", "es": "es", "mx": "es", "cl": "es", "uy": "es", "co": "es",
+    "pe": "es", "ve": "es", "bo": "es", "py": "es", "ec": "es",
+    "br": "pt", "pt": "pt",
+    "us": "en", "gb": "en", "au": "en", "ca": "en", "ie": "en", "nz": "en",
+    "fr": "fr", "it": "it", "de": "de", "jp": "ja", "cn": "zh-cn",
+}
+
+
+def _geo_params(country: str | None) -> tuple[str, str]:
+    """Devuelve (gl, hl) a partir del código ISO de país. gl = el código tal cual;
+    hl = idioma alineado al país (default 'es')."""
+    gl = (country or _DEFAULT_GL).strip().lower() or _DEFAULT_GL
+    hl = _HL_BY_GL.get(gl, "es")
+    return gl, hl
+
 _SITE_BY_NETWORK = {
     "twitter": "site:x.com OR site:twitter.com",
     "instagram": "site:instagram.com",
@@ -88,9 +114,12 @@ def search_serpapi(
     max_results: int = 10,
     fecha_desde: str | None = None,
     accounts: list[str] | None = None,
+    country: str = "ar",
 ) -> list[dict] | None:
     """
     Busca en Google vía SerpAPI con `site:` correspondiente a la red.
+    `country` es el código ISO 3166-1 alpha-2 que se pasa como 'gl' para forzar
+    resultados nativos de esa región (B.4).
     Devuelve lista de dicts {title, snippet, url, date}, [] si no hay resultados,
     o None ante errores de red/upstream (para no cachear vacíos espurios).
     """
@@ -107,13 +136,14 @@ def search_serpapi(
         if accounts_filter:
             query_parts.append(accounts_filter)
     query = " ".join(query_parts)
+    gl, hl = _geo_params(country)
     params = {
         "engine": "google",
         "q": query,
         "api_key": SERPAPI_API_KEY,
         "num": max_results,
-        "hl": "es",
-        "gl": "ar",
+        "hl": hl,
+        "gl": gl,
     }
     qdr = _date_to_qdr(fecha_desde)
     if qdr:

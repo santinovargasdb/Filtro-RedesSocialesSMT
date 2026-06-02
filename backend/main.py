@@ -33,6 +33,11 @@ class SearchRequest(BaseModel):
     hashtags: List[str] = []
     accounts: List[str] = []
     date: Optional[str] = None
+    # País de búsqueda como código ISO 3166-1 alpha-2 (ej. "ar", "br", "us", "es").
+    # Se usa como parámetro 'gl' de SerpAPI para forzar resultados nativos de esa
+    # región. Default "ar" (Argentina) por compat con el frontend viejo que no lo
+    # mandaba. El "Modo SMATA" solo aplica si el país es Argentina (lo fuerza el front).
+    country: str = "ar"
     # Switch "Modo SMATA": True = criterio hiper-estricto (solo SMATA/automotor),
     # False = monitor de prensa amplio (no exige mención de SMATA).
     smata_mode: bool = False
@@ -78,6 +83,12 @@ async def search_endpoint(request: SearchRequest):
 
         # smata_mode es el switch nuevo; strict_mode queda como alias de compat.
         smata_mode = request.smata_mode or request.strict_mode
+        # El Modo SMATA solo rige si el país es Argentina. El front ya lo deshabilita
+        # fuera de AR (B.2), pero lo reforzamos acá por si llega un build viejo o una
+        # request directa: con otro país, el criterio estricto SMATA no tiene sentido.
+        country = (request.country or "ar").strip().lower()
+        if country != "ar":
+            smata_mode = False
 
         print(f"Keywords recibidas: {request.keywords}, Modo SMATA: {smata_mode}")
         print(f"DEBUG: término armado = '{termino}' | smata_mode={smata_mode}")
@@ -89,6 +100,7 @@ async def search_endpoint(request: SearchRequest):
             keywords=request.keywords,
             accounts=request.accounts,
             networks=request.networks,
+            country=country,
         )
 
         posts = [PostOut(**p) for p in raw]

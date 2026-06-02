@@ -364,10 +364,13 @@ REGLA DE AISLAMIENTO (OBLIGATORIA): Debés evaluar cada publicación de forma to
 Criterios de evaluación (idénticos para cada publicación):
 {criterio}{tiktok_warning}
 
+REGLAS ADICIONALES (OBLIGATORIAS para TODAS las publicaciones):
+TRADUCCIÓN AL ESPAÑOL: Por cada publicación devolvé también un campo "texto". Si el texto original (title/snippet) está en un idioma distinto al español, traducilo de forma precisa y natural al español dentro del campo "texto", manteniendo el sentido original del posteo. Si ya está en español, devolvé en "texto" el contenido tal cual (limpio, sin recortar el sentido).
+
 Devolvé ÚNICAMENTE un JSON válido (sin texto adicional ni bloques de código) que sea un ESPEJO EXACTO de los IDs recibidos: un objeto por cada publicación enviada, con su mismo "id". No agregues ni omitas ninguno. Formato exacto:
 [
-  {{ "id": "Post_0", "score": 90, "razon": "breve justificación del puntaje" }},
-  {{ "id": "Post_1", "score": 0, "razon": "breve justificación del puntaje" }}
+  {{ "id": "Post_0", "score": 90, "texto": "texto del posteo en español", "razon": "breve justificación del puntaje" }},
+  {{ "id": "Post_1", "score": 0, "texto": "texto del posteo en español", "razon": "breve justificación del puntaje" }}
 ]
 
 Publicaciones a evaluar:
@@ -406,7 +409,12 @@ Publicaciones a evaluar:
             score = 0
 
         post_url = src.get("url", "") or ""
-        snippet = src.get("snippet", "") or src.get("title", "")
+        snippet_src = src.get("snippet", "") or src.get("title", "")
+        # B.5: si Gemini devolvió "texto" (traducido al español cuando el original
+        # estaba en otro idioma), lo usamos como texto a mostrar. Fallback al
+        # snippet crudo si la IA no lo devolvió.
+        texto_ia = (item.get("texto") or "").strip()
+        snippet = texto_ia or snippet_src
         date = src.get("date", "") or ""
         network, author, author_url, post_id = _parse_post_url(post_url, hint_network=src.get("network"))
 
@@ -459,6 +467,7 @@ def fetch_posts(
     keywords: list[str] | None = None,
     accounts: list[str] | None = None,
     networks: list[str] | None = None,
+    country: str = "ar",
 ) -> list[dict]:
     """
     Orquestador principal (Capa 3). Pide los resultados crudos a la Capa 2
@@ -484,6 +493,7 @@ def fetch_posts(
         tuple(sorted(keywords or [])),
         tuple(sorted(accounts or [])),
         tuple(sorted(nets)),
+        (country or "ar").strip().lower(),
     )
     cached = _CACHE.get(cache_key)
     if cached is not None:
@@ -507,6 +517,7 @@ def fetch_posts(
             max_results=10,
             fecha_desde=fecha_desde,
             accounts=accounts,
+            country=country,
         )
         if resultados is None:
             any_upstream_error = True

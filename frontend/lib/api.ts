@@ -20,8 +20,11 @@ export interface SearchRequest {
   accounts: string[];
   networks: ("twitter" | "instagram" | "tiktok")[];
   date: string;
+  // País de búsqueda como código ISO 3166-1 alpha-2 (ej. "ar", "br", "us").
+  // El backend lo usa como 'gl' de SerpAPI para resultados nativos de la región.
+  country: string;
   // Modo SMATA: true = criterio estricto (solo SMATA/automotor),
-  // false = monitor de prensa amplio.
+  // false = monitor de prensa amplio. Solo rige si country === "ar".
   smata_mode: boolean;
 }
 

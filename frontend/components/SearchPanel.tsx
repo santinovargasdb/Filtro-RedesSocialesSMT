@@ -1,6 +1,16 @@
 "use client";
 import { useState, KeyboardEvent } from "react";
+import countries from "i18n-iso-countries";
+import esLocale from "i18n-iso-countries/langs/es.json";
 import type { SearchRequest } from "@/lib/api";
+
+// Lista completa de países (250) con nombres en español, vía librería: el value
+// es el código ISO 3166-1 alpha-2 en minúscula, que el backend usa como 'gl' de
+// SerpAPI (B.4). Así no mantenemos ninguna lista hardcodeada.
+countries.registerLocale(esLocale);
+const COUNTRY_OPTIONS = Object.entries(countries.getNames("es"))
+  .map(([code, name]) => ({ code: code.toLowerCase(), name }))
+  .sort((a, b) => a.name.localeCompare(b.name, "es"));
 
 interface TagInputProps {
   label: string;
@@ -64,14 +74,30 @@ export default function SearchPanel({ onSearch, loading }: SearchPanelProps) {
   const [accounts, setAccounts] = useState<string[]>([]);
   const [networks, setNetworks] = useState<string[]>(["twitter", "instagram", "tiktok"]);
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [country, setCountry] = useState("ar");
   const [smataMode, setSmataMode] = useState(false);
+
+  // B.2: el Modo SMATA solo rige si el país es Argentina. Fuera de AR se fuerza OFF
+  // y el switch queda deshabilitado.
+  const isArgentina = country === "ar";
 
   const toggleNetwork = (id: string) =>
     setNetworks(prev => prev.includes(id) ? prev.filter(n => n !== id) : [...prev, id]);
 
+  const handleCountryChange = (code: string) => {
+    setCountry(code);
+    if (code !== "ar") setSmataMode(false);  // apaga el Modo SMATA fuera de Argentina
+  };
+
   const handleSearch = () => {
     if (!keywords.length && !hashtags.length) return;
-    onSearch({ keywords, hashtags, accounts, networks: networks as SearchRequest["networks"], date, smata_mode: smataMode });
+    onSearch({
+      keywords, hashtags, accounts,
+      networks: networks as SearchRequest["networks"],
+      date,
+      country,
+      smata_mode: isArgentina ? smataMode : false,
+    });
   };
 
   return (
@@ -97,6 +123,23 @@ export default function SearchPanel({ onSearch, loading }: SearchPanelProps) {
       </div>
 
       <hr className="divider" />
+
+      <div className="form-group">
+        <label className="form-label">País</label>
+        <select
+          className="form-input"
+          value={country}
+          onChange={e => handleCountryChange(e.target.value)}
+          style={{ colorScheme: "dark", cursor: "pointer" }}
+        >
+          {COUNTRY_OPTIONS.map(c => (
+            <option key={c.code} value={c.code}>{c.name}</option>
+          ))}
+        </select>
+        <p style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "6px" }}>
+          Define la región de los resultados. El Modo SMATA solo aplica en Argentina.
+        </p>
+      </div>
 
       <TagInput label="Palabras clave" placeholder="Ej: SMATA, paritaria..." tags={keywords} setTags={setKeywords} />
       <TagInput label="Hashtags" placeholder="#sindicato, #automotriz..." tags={hashtags} setTags={setHashtags} prefix="#" />
@@ -137,19 +180,25 @@ export default function SearchPanel({ onSearch, loading }: SearchPanelProps) {
           style={{ colorScheme: "dark" }} />
       </div>
 
-      <div style={{
+      <div
+        title={isArgentina ? "" : "El Modo SMATA solo está disponible con el país en Argentina"}
+        style={{
         display: "flex", alignItems: "center", justifyContent: "space-between",
         padding: "12px", borderRadius: "var(--radius-sm)",
         background: smataMode ? "rgba(255,193,7,0.1)" : "var(--input-bg)",
         border: `1px solid ${smataMode ? "rgba(255,193,7,0.4)" : "var(--border-color)"}`,
-        transition: "all 0.2s", cursor: "pointer",
-      }} onClick={() => setSmataMode(!smataMode)}>
+        transition: "all 0.2s",
+        cursor: isArgentina ? "pointer" : "not-allowed",
+        opacity: isArgentina ? 1 : 0.5,
+      }} onClick={() => { if (isArgentina) setSmataMode(!smataMode); }}>
         <div>
           <div style={{ fontSize: "13px", fontWeight: 600, color: smataMode ? "var(--smata-gold)" : "var(--text-primary)" }}>
             Modo SMATA
           </div>
           <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>
-            {smataMode ? "Estricto: solo SMATA / sector automotor" : "Amplio: monitoreo de prensa general"}
+            {!isArgentina
+              ? "Solo disponible con país: Argentina"
+              : smataMode ? "Estricto: solo SMATA / sector automotor" : "Amplio: monitoreo de prensa general"}
           </div>
         </div>
         <div style={{
