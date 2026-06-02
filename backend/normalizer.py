@@ -16,6 +16,8 @@ import json
 import time
 from urllib.parse import quote
 
+import requests
+
 from fetcher import search_serpapi, SUPPORTED_NETWORKS
 
 
