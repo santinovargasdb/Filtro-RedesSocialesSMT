@@ -409,7 +409,8 @@ Criterios de evaluación (idénticos para cada publicación):
 {criterio}{tiktok_warning}
 
 REGLAS ADICIONALES (OBLIGATORIAS para TODAS las publicaciones):
-TRADUCCIÓN AL ESPAÑOL: Por cada publicación devolvé también un campo "texto". Si el texto original (title/snippet) está en un idioma distinto al español, traducilo de forma precisa y natural al español dentro del campo "texto", manteniendo el sentido original del posteo. Si ya está en español, devolvé en "texto" el contenido tal cual (limpio, sin recortar el sentido).
+A) INTENCIÓN / SENTIMIENTO DE LA BÚSQUEDA: Si el término buscado "{termino}" tiene una carga de sentimiento explícita (por ejemplo una crítica como "smata es una mierda", o un elogio claro), NO alcanza con que el posteo contenga la palabra clave: evaluá la INTENCIÓN GLOBAL del posteo. Si una publicación coincide con la palabra clave pero expresa una carga emocional OPUESTA a la del término buscado (el término es una crítica y el posteo tiene tono positivo/elogioso, o viceversa), asignale score 0. Solo deben pasar las publicaciones que cumplen la premisa EXACTA de la búsqueda, incluida su intención. Si el término es neutro (sin carga de sentimiento), ignorá esta regla y puntuá normalmente.
+B) TRADUCCIÓN AL ESPAÑOL: Por cada publicación devolvé también un campo "texto". Si el texto original (title/snippet) está en un idioma distinto al español, traducilo de forma precisa y natural al español dentro del campo "texto", manteniendo el sentido original del posteo. Si ya está en español, devolvé en "texto" el contenido tal cual (limpio, sin recortar el sentido).
 
 Devolvé ÚNICAMENTE un JSON válido (sin texto adicional ni bloques de código) que sea un ESPEJO EXACTO de los IDs recibidos: un objeto por cada publicación enviada, con su mismo "id". No agregues ni omitas ninguno. Formato exacto:
 [
