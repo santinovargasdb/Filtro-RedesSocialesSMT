@@ -252,12 +252,15 @@ def _find_matched_terms(text: str, keywords: list[str]) -> list[str]:
     return seen
 
 
-def _call_gemini_model(model: str, api_key: str, prompt: str) -> tuple[list | None, int | None]:
+def _gemini_generate(model: str, api_key: str, prompt: str, timeout: int = 45) -> tuple[str | None, int | None]:
     """
-    Llama a un modelo Gemini específico. Devuelve (lista_scored, http_status_si_error).
-    - (lista, None): éxito
-    - (None, status): error HTTP con status code (puede disparar fallback)
-    - (None, None): error de otro tipo (red, parseo) — no tiene sentido fallback de modelo
+    Llamada cruda a un modelo Gemini. Devuelve (texto_crudo_sin_fences, http_status_si_error).
+    Helper de bajo nivel compartido por el scoring (_call_gemini_model) y por la
+    Capa de Traducción Automática (_run_translation_cascade): ambos hacen la misma
+    request y solo difieren en cómo parsean la respuesta.
+    - (texto, None): éxito (ya sin ```json``` fences)
+    - (None, status): error HTTP con status code (puede disparar fallback de modelo)
+    - (None, None): error de otro tipo (red) — no tiene sentido el fallback de modelo
     """
     # v1beta expone todos los modelos flash/lite actuales; v1 devolvía 404 en
     # algunos alias (p. ej. gemini-flash-latest), rompiendo la cascada de fallback.
@@ -268,16 +271,12 @@ def _call_gemini_model(model: str, api_key: str, prompt: str) -> tuple[list | No
     }
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     try:
-        response = requests.post(url, headers=headers, json=payload, timeout=45)
+        response = requests.post(url, headers=headers, json=payload, timeout=timeout)
         response.raise_for_status()
         res_data = response.json()
         raw = res_data["candidates"][0]["content"]["parts"][0]["text"].strip()
         raw = raw.replace("```json", "").replace("```", "").strip()
-        scored = json.loads(raw)
-        if not isinstance(scored, list):
-            print(f"ERROR Gemini[{model}]: respuesta no es lista JSON")
-            return None, None
-        return scored, None
+        return raw, None
     except requests.exceptions.HTTPError as e:
         status = e.response.status_code if e.response is not None else None
         body_msg = ""
@@ -292,6 +291,27 @@ def _call_gemini_model(model: str, api_key: str, prompt: str) -> tuple[list | No
     except Exception as e:
         print(f"ERROR Gemini[{model}]: {e}")
         return None, None
+
+
+def _call_gemini_model(model: str, api_key: str, prompt: str) -> tuple[list | None, int | None]:
+    """
+    Llama a un modelo Gemini para SCORING. Devuelve (lista_scored, http_status_si_error).
+    - (lista, None): éxito
+    - (None, status): error HTTP con status code (puede disparar fallback)
+    - (None, None): error de otro tipo (red, parseo) — no tiene sentido fallback de modelo
+    """
+    raw, status = _gemini_generate(model, api_key, prompt, timeout=45)
+    if raw is None:
+        return None, status
+    try:
+        scored = json.loads(raw)
+    except Exception as e:
+        print(f"ERROR Gemini[{model}]: parseo JSON falló — {e}")
+        return None, None
+    if not isinstance(scored, list):
+        print(f"ERROR Gemini[{model}]: respuesta no es lista JSON")
+        return None, None
+    return scored, None
 
 
 def _run_gemini_cascade(prompt: str, api_key: str) -> tuple[list | None, int | None]:
@@ -312,6 +332,128 @@ def _run_gemini_cascade(prompt: str, api_key: str) -> tuple[list | None, int | N
         if idx + 1 < len(GEMINI_MODELS):
             print(f"DEBUG Gemini: HTTP {status} en {model}, probando fallback {GEMINI_MODELS[idx + 1]}")
     return None, status
+
+
+# ── Capa de Traducción Automática (búsquedas internacionales) ─────────────────
+# Cuando el país de búsqueda NO es hispanohablante (Japón, Alemania, Rusia, etc.),
+# las keywords en español jamás matchean contenido nativo: el monitor devolvía
+# siempre "No se encontraron resultados". ANTES de armar la query de SerpAPI,
+# traducimos el término al idioma nativo del país con Gemini, manteniendo el
+# sentido técnico/sindical y de redes sociales y devolviéndolo en su alfabeto
+# nativo (cirílico, japonés, hangul, etc.).
+#
+# El término traducido se usa SOLO como 'q' de SerpAPI. El scoring de Gemini sigue
+# recibiendo el término en español (para evaluar bien la intención/sentimiento) y
+# los matched_terms siguen comparando las keywords en español contra el texto que
+# la Capa 3 ya retraduce al español (campo "texto", B.5). Si la traducción falla
+# por cualquier motivo, caemos al término original: peor caso, busca en español
+# como antes (degradación segura, nunca rompe la búsqueda).
+
+# Países hispanohablantes: para ellos NO traducimos (ya buscan en el idioma
+# correcto y gastar cuota de Gemini no aportaría nada). Alineado con los códigos
+# que mapean a hl='es' en la Capa 2.
+_SPANISH_SPEAKING_GL = {
+    "ar", "es", "mx", "cl", "uy", "co", "pe", "ve", "bo", "py", "ec",
+    "gt", "hn", "sv", "ni", "cr", "pa", "do", "cu", "pr",
+}
+
+# Cache de traducciones (term, gl) -> término traducido. Las traducciones no
+# cambian y la cardinalidad es chica (pocos términos × pocos países), así que
+# un cache permanente ahorra cuota de Gemini en búsquedas internacionales repetidas.
+_TRANSLATION_CACHE: dict[tuple[str, str], str] = {}
+
+
+def _build_translation_prompt(termino: str, gl: str) -> str:
+    """Prompt para que Gemini traduzca el término de búsqueda al idioma nativo del
+    país (código ISO 'gl'), con criterio de redes sociales y terminología gremial."""
+    return (
+        "Sos un traductor experto en redes sociales y en terminología sindical, "
+        "gremial y laboral.\n"
+        f"Traducí los siguientes términos de búsqueda del español al idioma nativo "
+        f"del país cuyo código ISO 3166-1 alpha-2 es '{gl}'.\n\n"
+        "REGLAS:\n"
+        "1. NO hagas una traducción literal: usá los términos REALES y naturales que "
+        "un hablante nativo de ese país usaría en sus publicaciones en redes sociales. "
+        "Por ejemplo, 'sindicato' debe traducirse al término que de verdad usan los "
+        "nativos para referirse a un sindicato/gremio en ese país.\n"
+        "2. Mantené el sentido técnico, sindical/gremial y de redes sociales.\n"
+        "3. Devolvé el resultado en el alfabeto nativo correspondiente (cirílico, "
+        "japonés, hangul, etc.), NO transliterado al alfabeto latino.\n"
+        "4. Conservá tal cual los nombres propios, marcas y siglas (por ejemplo SMATA).\n\n"
+        f'Términos a traducir: "{termino}"\n\n'
+        "Devolvé ÚNICAMENTE un JSON válido, sin texto adicional ni bloques de código, "
+        'con este formato EXACTO:\n'
+        '{ "query": "términos traducidos separados por espacios" }'
+    )
+
+
+def _run_translation_cascade(prompt: str, api_key: str) -> tuple[str | None, int | None]:
+    """Recorre la cascada GEMINI_MODELS con UNA api_key para traducir. Devuelve
+    (query_traducida, last_status). Mismo patrón de fallback por modelo que el
+    scoring: solo prueba el siguiente modelo si el anterior dio 429/503/404."""
+    status: int | None = None
+    for idx, model in enumerate(GEMINI_MODELS):
+        raw, status = _gemini_generate(model, api_key, prompt, timeout=30)
+        if raw is not None:
+            try:
+                data = json.loads(raw)
+                query = (data.get("query") or "").strip() if isinstance(data, dict) else ""
+            except Exception as e:
+                print(f"ERROR Gemini traducción[{model}]: parseo JSON falló — {e}")
+                query = ""
+            if query:
+                if idx > 0:
+                    print(f"DEBUG Gemini traducción: fallback EXITOSO con {model}")
+                return query, status
+            # Respuesta OK pero sin 'query' usable: no es error de cuota, no insistas.
+            return None, status
+        if status not in GEMINI_RETRY_STATUSES:
+            return None, status
+        if idx + 1 < len(GEMINI_MODELS):
+            print(f"DEBUG Gemini traducción: HTTP {status} en {model}, probando fallback {GEMINI_MODELS[idx + 1]}")
+    return None, status
+
+
+def _translate_query_for_country(termino: str, country: str) -> str:
+    """Capa de Traducción Automática: traduce el término de búsqueda al idioma nativo
+    del país (cuando NO es hispanohablante) para armar la query de SerpAPI. Cae al
+    término original ante cualquier fallo (degradación segura)."""
+    gl = (country or "ar").strip().lower()
+    termino = (termino or "").strip()
+    if not termino or gl in _SPANISH_SPEAKING_GL:
+        return termino
+
+    cache_key = (termino, gl)
+    cached = _TRANSLATION_CACHE.get(cache_key)
+    if cached is not None:
+        print(f"DEBUG traducción: cache HIT ({gl}) '{termino}' -> '{cached}'")
+        return cached
+
+    api_key = os.getenv("GEMINI_API_KEY", "")
+    if not api_key:
+        print("ERROR: GEMINI_API_KEY no configurada — sin traducción internacional, busco en español.")
+        return termino
+
+    prompt = _build_translation_prompt(termino, gl)
+
+    # Cascada con la API Key PRINCIPAL.
+    query, status = _run_translation_cascade(prompt, api_key)
+
+    # Misma contingencia que el scoring (Fase E): si la cuota principal se agotó
+    # (429/503), rotamos a la API Key SECUNDARIA y reintentamos la traducción.
+    if query is None and status in (429, 503):
+        secondary_key = os.getenv("GEMINI_API_KEY_SECONDARY", "")
+        if secondary_key:
+            print("Cuota principal agotada en traducción. Rotando a la API de SMATA...")
+            query, status = _run_translation_cascade(prompt, secondary_key)
+
+    if not query:
+        print(f"DEBUG traducción ({gl}): falló (status={status}) — uso el término original en español.")
+        return termino
+
+    print(f"DEBUG traducción internacional ({gl}): '{termino}' -> '{query}'")
+    _TRANSLATION_CACHE[cache_key] = query
+    return query
 
 
 def _process_with_gemini(
@@ -587,12 +729,20 @@ def fetch_posts(
     any_upstream_error = False
     total_serp_results = 0
 
+    # 0) Capa de Traducción Automática: para países NO hispanohablantes traducimos
+    #    el término al idioma nativo ANTES de pegarle a SerpAPI (si no, buscar en
+    #    Japón/Alemania/Rusia con keywords en español nunca trae resultados). El
+    #    scoring de Gemini sigue usando 'termino' en español (intención/sentimiento)
+    #    y los matched_terms comparan las keywords en español contra el texto que la
+    #    Capa 3 retraduce al español (B.5). Ante cualquier fallo cae al término original.
+    termino_busqueda = _translate_query_for_country(termino, country)
+
     # 1) SerpAPI por red (su cuota es amplia), aplicando el tope por red ANTES de
     #    mergear. Cada resultado se etiqueta con su "network".
     serp_merged: list[dict] = []
     for net in nets:
         resultados = search_serpapi(
-            termino,
+            termino_busqueda,
             network=net,
             max_results=10,
             fecha_desde=fecha_desde,

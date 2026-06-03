@@ -292,6 +292,8 @@ def test_fetch_posts_fallback_red_por_red(monkeypatch):
     """Si el batch combinado (multi-red) falla, reintenta red por red y recupera."""
     monkeypatch.setenv("GEMINI_API_KEY", "k")
     nz._CACHE.clear()
+    # Neutralizamos la Capa de Traducción para no pegarle a la red en este test.
+    monkeypatch.setattr(nz, "_translate_query_for_country", lambda t, c: t)
 
     def fake_serp(termino, network, max_results, fecha_desde, accounts, country):
         return [{"title": "t", "snippet": "s", "url": f"https://x/{network}", "date": ""}]
@@ -313,6 +315,7 @@ def test_fetch_posts_fallback_parcial_no_rompe(monkeypatch):
     (no 503)."""
     monkeypatch.setenv("GEMINI_API_KEY", "k")
     nz._CACHE.clear()
+    monkeypatch.setattr(nz, "_translate_query_for_country", lambda t, c: t)
 
     def fake_serp(termino, network, max_results, fecha_desde, accounts, country):
         return [{"title": "t", "snippet": "s", "url": f"https://x/{network}", "date": ""}]
@@ -328,6 +331,96 @@ def test_fetch_posts_fallback_parcial_no_rompe(monkeypatch):
     monkeypatch.setattr(nz, "_process_with_gemini", fake_proc)
     posts = nz.fetch_posts("noticias", networks=["twitter", "tiktok"], country="jp")
     assert sorted(p["network"] for p in posts) == ["twitter"]  # parcial, sin romper
+
+
+def test_fetch_posts_traduce_para_pais_no_hispano(monkeypatch):
+    """En un país no hispanohablante, fetch_posts pasa el término TRADUCIDO a SerpAPI."""
+    monkeypatch.setenv("GEMINI_API_KEY", "k")
+    nz._CACHE.clear()
+    monkeypatch.setattr(nz, "_translate_query_for_country",
+                        lambda t, c: "労働組合" if c == "jp" else t)
+    capturado = {}
+
+    def fake_serp(termino, network, max_results, fecha_desde, accounts, country):
+        capturado["termino"] = termino
+        return [{"title": "t", "snippet": "s", "url": f"https://x/{network}", "date": ""}]
+
+    def fake_proc(resultados, termino, smata_mode, keywords):
+        capturado["termino_scoring"] = termino  # el scoring conserva el español
+        return [_post("twitter")]
+
+    monkeypatch.setattr(nz, "search_serpapi", fake_serp)
+    monkeypatch.setattr(nz, "_process_with_gemini", fake_proc)
+    nz.fetch_posts("sindicato", networks=["twitter"], country="jp")
+    assert capturado["termino"] == "労働組合"          # SerpAPI recibe el nativo
+    assert capturado["termino_scoring"] == "sindicato"  # scoring sigue en español
+
+
+# ── Capa de Traducción Automática (búsquedas internacionales) ─────────────────
+def test_translate_skip_pais_hispano_no_llama_gemini(monkeypatch):
+    """Para países hispanohablantes NO se traduce ni se toca Gemini."""
+    monkeypatch.setenv("GEMINI_API_KEY", "k")
+    llamadas = {"n": 0}
+    monkeypatch.setattr(nz, "_gemini_generate",
+                        lambda *a, **k: (llamadas.__setitem__("n", llamadas["n"] + 1), ("x", None))[1])
+    for gl in ("ar", "es", "mx", "cl", "AR"):
+        assert nz._translate_query_for_country("sindicato", gl) == "sindicato"
+    assert llamadas["n"] == 0
+
+
+def test_translate_pais_no_hispano_traduce(monkeypatch):
+    """País no hispanohablante: devuelve el término traducido por Gemini."""
+    monkeypatch.setenv("GEMINI_API_KEY", "k")
+    nz._TRANSLATION_CACHE.clear()
+    monkeypatch.setattr(nz, "_gemini_generate",
+                        lambda model, key, prompt, timeout=45: ('{"query": "労働組合"}', None))
+    assert nz._translate_query_for_country("sindicato", "jp") == "労働組合"
+
+
+def test_translate_cachea(monkeypatch):
+    """La traducción se cachea: una segunda llamada no vuelve a pegarle a Gemini."""
+    monkeypatch.setenv("GEMINI_API_KEY", "k")
+    nz._TRANSLATION_CACHE.clear()
+    llamadas = {"n": 0}
+
+    def fake_gen(model, key, prompt, timeout=45):
+        llamadas["n"] += 1
+        return '{"query": "Gewerkschaft"}', None
+
+    monkeypatch.setattr(nz, "_gemini_generate", fake_gen)
+    assert nz._translate_query_for_country("sindicato", "de") == "Gewerkschaft"
+    assert nz._translate_query_for_country("sindicato", "de") == "Gewerkschaft"
+    assert llamadas["n"] == 1  # la segunda salió del cache
+
+
+def test_translate_falla_cae_al_termino_original(monkeypatch):
+    """Si Gemini falla, la búsqueda cae al término en español (degradación segura)."""
+    monkeypatch.setenv("GEMINI_API_KEY", "k")
+    nz._TRANSLATION_CACHE.clear()
+    monkeypatch.setattr(nz, "_gemini_generate",
+                        lambda model, key, prompt, timeout=45: (None, 500))
+    assert nz._translate_query_for_country("sindicato", "ru") == "sindicato"
+
+
+def test_translate_sin_api_key_cae_al_original(monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    nz._TRANSLATION_CACHE.clear()
+    assert nz._translate_query_for_country("sindicato", "jp") == "sindicato"
+
+
+def test_translate_rota_a_secundaria_en_429(monkeypatch):
+    """Si la key principal agota cuota (429), rota a la secundaria y traduce."""
+    monkeypatch.setenv("GEMINI_API_KEY", "primary")
+    monkeypatch.setenv("GEMINI_API_KEY_SECONDARY", "secondary")
+    nz._TRANSLATION_CACHE.clear()
+
+    def fake_gen(model, key, prompt, timeout=45):
+        if key == "primary":
+            return None, 429
+        return '{"query": "профсоюз"}', None
+
+    monkeypatch.setattr(nz, "_gemini_generate", fake_gen)
+    assert nz._translate_query_for_country("sindicato", "ru") == "профсоюз"
 
 
 # ── Bifurcación del prompt según smata_mode ───────────────────────────────────
