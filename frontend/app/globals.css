@@ -39,6 +39,11 @@
 
 /* ── TEMA OSCURO (toggle): restaura la paleta original ── */
 :root[data-theme="dark"] {
+  /* TikTok: su negro de marca es invisible sobre el fondo oscuro -> cian de marca.
+     (Los componentes resuelven el acento vía lib/networks.ts; esta variable se
+     mantiene en sintonía por si algún estilo CSS la consume.) */
+  --tiktok-color: #00f2fe;
+
   --bg-primary:   #0f1a13;
   --bg-secondary: #152318;
   --bg-card:      #1c2e1f;
@@ -162,6 +167,17 @@ body {
   background: var(--input-bg-focus);
 }
 .form-input::placeholder { color: var(--text-muted); }
+
+/* Ícono del calendario del <input type="date">: visible en ambos temas.
+   En claro lo llevamos a un gris intermedio (~gray-500) para que no se pierda
+   contra el fondo claro; en oscuro queda claro gracias al colorScheme del input. */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.9;
+}
+:root:not([data-theme="dark"]) input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(48%); /* glifo negro por defecto -> gris ~#7a7a7a */
+}
 
 /* Tag input */
 .tag-input-wrapper {

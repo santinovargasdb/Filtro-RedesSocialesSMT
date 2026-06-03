@@ -2,6 +2,8 @@
 
 import { Post } from "@/lib/api";
 import PostCard from "./PostCard";
+import { useTheme } from "@/lib/useTheme";
+import { networkColor } from "@/lib/networks";
 
 interface ResultsGridProps {
   posts: Post[];
@@ -38,11 +40,8 @@ function SkeletonCard() {
   );
 }
 
-const NET_COLORS: Record<string, string> = {
-  twitter: "#1DA1F2", instagram: "#E1306C", tiktok: "#000000",
-};
-
 export default function ResultsGrid({ posts, selectedIds, onToggle, loading, summary, hasSearched }: ResultsGridProps) {
+  const isDark = useTheme() === "dark";
   if (loading) {
     return (
       <div style={{ flex: 1, padding: "24px", overflowY: "auto" }}>
@@ -91,7 +90,7 @@ export default function ResultsGrid({ posts, selectedIds, onToggle, loading, sum
           </span>
           <span style={{ color: "var(--border-color)" }}>·</span>
           {Object.entries(summary.by_network).map(([net, count]) => (
-            <span key={net} style={{ fontSize: "12px", color: NET_COLORS[net] ?? "#888", fontWeight: 600 }}>
+            <span key={net} style={{ fontSize: "12px", color: networkColor(net, isDark), fontWeight: 600 }}>
               {net}: {count}
             </span>
           ))}

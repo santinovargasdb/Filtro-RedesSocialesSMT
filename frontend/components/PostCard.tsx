@@ -2,6 +2,8 @@
 
 import { Post } from "@/lib/api";
 import ScoreBadge from "./ScoreBadge";
+import { useTheme } from "@/lib/useTheme";
+import { networkColor } from "@/lib/networks";
 
 const NETWORK_META = {
   twitter:   { label: "X / Twitter", color: "#1DA1F2", icon: "𝕏" },
@@ -26,13 +28,21 @@ function formatDate(dateStr: string) {
 
 export default function PostCard({ post, selected, onToggle }: PostCardProps) {
   const net = NETWORK_META[post.network] ?? { label: post.network, color: "#888", icon: "●" };
+  const isDark = useTheme() === "dark";
+  // Color de acento sensible al tema: en oscuro, TikTok deja de ser negro invisible.
+  const color = networkColor(post.network, isDark);
+  // En oscuro, las tarjetas de TikTok llevan un borde/glow sutil de su color para
+  // que resalten igual que X e Instagram (antes se veían apagadas).
+  const tiktokDarkAccent = post.network === "tiktok" && isDark;
 
   return (
     <article
       onClick={() => onToggle(post.id)}
       style={{
         background: selected ? "var(--bg-card-hover)" : "var(--bg-card)",
-        border: `1px solid ${selected ? net.color + "55" : "var(--border-color)"}`,
+        border: `1px solid ${
+          selected ? color + "55" : tiktokDarkAccent ? color + "3a" : "var(--border-color)"
+        }`,
         borderRadius: "var(--radius-md)",
         padding: "18px",
         cursor: "pointer",
@@ -40,7 +50,9 @@ export default function PostCard({ post, selected, onToggle }: PostCardProps) {
         display: "flex",
         flexDirection: "column",
         gap: "12px",
-        boxShadow: selected ? `0 0 0 2px ${net.color}33` : "none",
+        boxShadow: selected
+          ? `0 0 0 2px ${color}33`
+          : tiktokDarkAccent ? `0 0 14px ${color}1f` : "none",
         position: "relative",
         overflow: "hidden",
       }}
@@ -48,7 +60,7 @@ export default function PostCard({ post, selected, onToggle }: PostCardProps) {
       {/* Selection indicator strip */}
       <div style={{
         position: "absolute", left: 0, top: 0, bottom: 0, width: "3px",
-        background: selected ? net.color : "transparent",
+        background: selected ? color : "transparent",
         transition: "background 0.2s",
       }} />
 
@@ -58,17 +70,17 @@ export default function PostCard({ post, selected, onToggle }: PostCardProps) {
           {/* Network badge */}
           <span style={{
             display: "inline-flex", alignItems: "center", gap: "4px",
-            background: net.color + "20", border: `1px solid ${net.color}55`,
+            background: color + "20", border: `1px solid ${color}55`,
             borderRadius: "4px", padding: "2px 8px",
-            fontSize: "11px", fontWeight: 700, color: net.color,
+            fontSize: "11px", fontWeight: 700, color: color,
           }}>
             {net.icon} {net.label}
           </span>
           {/* Checkbox */}
           <div style={{
             width: "18px", height: "18px", borderRadius: "4px",
-            border: `2px solid ${selected ? net.color : "var(--text-muted)"}`,
-            background: selected ? net.color : "transparent",
+            border: `2px solid ${selected ? color : "var(--text-muted)"}`,
+            background: selected ? color : "transparent",
             display: "flex", alignItems: "center", justifyContent: "center",
             transition: "all 0.15s", flexShrink: 0,
           }}>
@@ -82,9 +94,9 @@ export default function PostCard({ post, selected, onToggle }: PostCardProps) {
       <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
         <div style={{
           width: "30px", height: "30px", borderRadius: "50%",
-          background: `linear-gradient(135deg, ${net.color}66, ${net.color}33)`,
+          background: `linear-gradient(135deg, ${color}66, ${color}33)`,
           display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: "13px", fontWeight: 700, color: net.color, flexShrink: 0,
+          fontSize: "13px", fontWeight: 700, color: color, flexShrink: 0,
         }}>
           {(post.author || "?").charAt(0).toUpperCase()}
         </div>
@@ -139,7 +151,7 @@ export default function PostCard({ post, selected, onToggle }: PostCardProps) {
           rel="noopener noreferrer"
           onClick={e => e.stopPropagation()}
           style={{
-            fontSize: "11px", color: net.color, textDecoration: "none",
+            fontSize: "11px", color: color, textDecoration: "none",
             opacity: 0.7, display: "flex", alignItems: "center", gap: "4px",
           }}
         >

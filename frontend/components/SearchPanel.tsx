@@ -3,6 +3,8 @@ import { useState, KeyboardEvent } from "react";
 import countries from "i18n-iso-countries";
 import esLocale from "i18n-iso-countries/langs/es.json";
 import type { SearchRequest } from "@/lib/api";
+import { useTheme } from "@/lib/useTheme";
+import { networkColor } from "@/lib/networks";
 
 // Lista de países con nombres en español, vía librería: el value es el código
 // ISO 3166-1 alpha-2 en minúscula, que el backend usa como 'gl' de SerpAPI (B.4).
@@ -124,6 +126,7 @@ export default function SearchPanel({ onSearch, loading }: SearchPanelProps) {
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [country, setCountry] = useState("ar");
   const [smataMode, setSmataMode] = useState(false);
+  const isDark = useTheme() === "dark";
 
   // B.2: el Modo SMATA solo rige si el país es Argentina. Fuera de AR se fuerza OFF
   // y el switch queda deshabilitado.
@@ -198,25 +201,35 @@ export default function SearchPanel({ onSearch, loading }: SearchPanelProps) {
       <div className="form-group">
         <label className="form-label">Redes sociales</label>
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-          {NETWORKS.map(net => (
-            <label key={net.id} style={{
-              display: "flex", alignItems: "center", gap: "10px", cursor: "pointer",
-              padding: "8px 12px", borderRadius: "var(--radius-sm)",
-              border: `1px solid ${networks.includes(net.id) ? net.color + "66" : "var(--border-color)"}`,
-              background: networks.includes(net.id) ? net.color + "15" : "transparent",
-              transition: "all 0.2s",
-            }}>
-              <input
-                type="checkbox"
-                checked={networks.includes(net.id)}
-                onChange={() => toggleNetwork(net.id)}
-                style={{ accentColor: net.color, width: "16px", height: "16px" }}
-              />
-              <span style={{ fontSize: "13px", fontWeight: 500, color: networks.includes(net.id) ? net.color : "var(--text-secondary)" }}>
-                {net.icon} {net.label}
-              </span>
-            </label>
-          ))}
+          {NETWORKS.map(net => {
+            const active = networks.includes(net.id);
+            // Color de acento sensible al tema: en oscuro TikTok deja de ser negro.
+            const netColor = networkColor(net.id, isDark);
+            // En oscuro, TikTok sin seleccionar se fusionaba con el fondo. Le damos
+            // un borde/fondo cian muy sutil para que tenga identidad propia, como X e IG.
+            const tiktokDarkAccent = net.id === "tiktok" && isDark && !active;
+            return (
+              <label key={net.id} style={{
+                display: "flex", alignItems: "center", gap: "10px", cursor: "pointer",
+                padding: "8px 12px", borderRadius: "var(--radius-sm)",
+                border: `1px solid ${
+                  active ? netColor + "66" : tiktokDarkAccent ? netColor + "3a" : "var(--border-color)"
+                }`,
+                background: active ? netColor + "15" : tiktokDarkAccent ? netColor + "0d" : "transparent",
+                transition: "all 0.2s",
+              }}>
+                <input
+                  type="checkbox"
+                  checked={active}
+                  onChange={() => toggleNetwork(net.id)}
+                  style={{ accentColor: netColor, width: "16px", height: "16px" }}
+                />
+                <span style={{ fontSize: "13px", fontWeight: 500, color: active ? netColor : "var(--text-secondary)" }}>
+                  {net.icon} {net.label}
+                </span>
+              </label>
+            );
+          })}
         </div>
       </div>
 
@@ -224,8 +237,11 @@ export default function SearchPanel({ onSearch, loading }: SearchPanelProps) {
 
       <div className="form-group">
         <label className="form-label">Fecha desde</label>
+        {/* colorScheme sigue al tema: en claro el ícono del calendario se renderiza
+            oscuro/gris (visible sobre el fondo claro), en oscuro se aclara. Antes
+            estaba forzado a "dark", por eso el ícono desaparecía en modo claro. */}
         <input type="date" value={date} onChange={e => setDate(e.target.value)} className="form-input"
-          style={{ colorScheme: "dark" }} />
+          style={{ colorScheme: isDark ? "dark" : "light" }} />
       </div>
 
       <div
