@@ -4,12 +4,46 @@ import countries from "i18n-iso-countries";
 import esLocale from "i18n-iso-countries/langs/es.json";
 import type { SearchRequest } from "@/lib/api";
 
-// Lista completa de países (250) con nombres en español, vía librería: el value
-// es el código ISO 3166-1 alpha-2 en minúscula, que el backend usa como 'gl' de
-// SerpAPI (B.4). Así no mantenemos ninguna lista hardcodeada.
+// Lista de países con nombres en español, vía librería: el value es el código
+// ISO 3166-1 alpha-2 en minúscula, que el backend usa como 'gl' de SerpAPI (B.4).
+// Partimos del set completo (250) y excluimos los países con bloqueos
+// gubernamentales a las redes sociales occidentales (ver BLOCKED_COUNTRIES): en
+// esos países SerpAPI/scraping no devuelve contenido nativo de X/Instagram/TikTok,
+// así que mostrarlos solo generaría búsquedas sin resultados para Prensa.
+//
+// Cada código está documentado para que sumar/quitar un país sea un cambio de una
+// sola línea (no hace falta tocar la lógica del filtrado).
+// Criterio: queda FUERA todo país sin acceso pleno y limpio a las tres redes que
+// monitorea la app (X / Instagram / TikTok). Se excluye si el gobierno bloquea,
+// prohíbe o restringe de forma persistente al menos una de esas redes, o si sufre
+// apagones de internet recurrentes. En esos países SerpAPI/scraping no devuelve
+// contenido nativo, así que solo generarían búsquedas vacías para Prensa.
+const BLOCKED_COUNTRIES = new Set<string>([
+  // ── Bloqueo total / casi total de las redes occidentales ──
+  "cn", // China — el "Gran Cortafuegos" bloquea X, Instagram, Facebook, YouTube.
+  "ru", // Rusia — Meta (Instagram/Facebook) declarada extremista; X restringido.
+  "kp", // Corea del Norte — sin internet abierto al público: todo bloqueado.
+  "ir", // Irán — bloquea X, Facebook, Instagram y Telegram.
+  "tm", // Turkmenistán — bloquea la mayoría de redes sociales y VPNs.
+  "er", // Eritrea — acceso a internet extremadamente restringido.
+  "mm", // Myanmar — la junta bloquea Facebook, X e Instagram desde 2021.
+  // ── Restricción severa / persistente de alguna red monitoreada ──
+  "cu", // Cuba — acceso estatal limitado e intermitente; cortes en protestas.
+  "by", // Bielorrusia — redes restringidas y canales declarados "extremistas".
+  "sy", // Siria — censura estatal generalizada de las redes sociales.
+  "ve", // Venezuela — bloqueó X en 2024; restricciones recurrentes.
+  "pk", // Pakistán — X bloqueado desde feb. 2024; baneos recurrentes de TikTok.
+  "az", // Azerbaiyán — TikTok bloqueado; cortes de redes durante conflictos.
+  "tj", // Tayikistán — bloquea de forma rutinaria Facebook, YouTube y redes.
+  "uz", // Uzbekistán — ha bloqueado Twitter/X, TikTok y otras redes.
+  "sd", // Sudán — apagones de redes sociales prolongados y recurrentes.
+  "et", // Etiopía — apagones de internet y redes sociales prolongados.
+]);
+
 countries.registerLocale(esLocale);
 const COUNTRY_OPTIONS = Object.entries(countries.getNames("es"))
   .map(([code, name]) => ({ code: code.toLowerCase(), name }))
+  .filter(c => !BLOCKED_COUNTRIES.has(c.code))
   .sort((a, b) => a.name.localeCompare(b.name, "es"));
 
 interface TagInputProps {
