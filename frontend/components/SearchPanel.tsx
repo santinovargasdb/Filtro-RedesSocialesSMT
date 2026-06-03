@@ -6,38 +6,52 @@ import type { SearchRequest } from "@/lib/api";
 
 // Lista de países con nombres en español, vía librería: el value es el código
 // ISO 3166-1 alpha-2 en minúscula, que el backend usa como 'gl' de SerpAPI (B.4).
-// Partimos del set completo (250) y excluimos los países con bloqueos
-// gubernamentales a las redes sociales occidentales (ver BLOCKED_COUNTRIES): en
-// esos países SerpAPI/scraping no devuelve contenido nativo de X/Instagram/TikTok,
-// así que mostrarlos solo generaría búsquedas sin resultados para Prensa.
+// Partimos del set completo (250) y excluimos los países de BLOCKED_COUNTRIES.
 //
-// Cada código está documentado para que sumar/quitar un país sea un cambio de una
-// sola línea (no hace falta tocar la lógica del filtrado).
-// Criterio: queda FUERA todo país sin acceso pleno y limpio a las tres redes que
-// monitorea la app (X / Instagram / TikTok). Se excluye si el gobierno bloquea,
-// prohíbe o restringe de forma persistente al menos una de esas redes, o si sufre
-// apagones de internet recurrentes. En esos países SerpAPI/scraping no devuelve
-// contenido nativo, así que solo generarían búsquedas vacías para Prensa.
+// Criterio (definitivo, según Prensa): queda FUERA todo país sin acceso pleno y
+// limpio a las redes que monitorea la app (X / Instagram / TikTok), ya sea por
+// censura, bloqueos gubernamentales, apagones recurrentes o baja indexación
+// regional en SerpAPI/scraping. Así Prensa nunca cae en un selector que devuelva
+// búsquedas vacías o errores. Cada código va documentado para ajustar la lista en
+// una sola línea (la lógica de filtrado de abajo no se toca).
+//
+// Se mantiene como Set para que el lookup del filtro (.has) sea O(1).
 const BLOCKED_COUNTRIES = new Set<string>([
   // ── Bloqueo total / casi total de las redes occidentales ──
   "cn", // China — el "Gran Cortafuegos" bloquea X, Instagram, Facebook, YouTube.
   "ru", // Rusia — Meta (Instagram/Facebook) declarada extremista; X restringido.
-  "kp", // Corea del Norte — sin internet abierto al público: todo bloqueado.
-  "ir", // Irán — bloquea X, Facebook, Instagram y Telegram.
+  "kp", // Corea del Norte — Sin internet público: todo bloqueado.
+  "ir", // Irán — X e Instagram bloqueados de forma permanente y de raíz.
   "tm", // Turkmenistán — bloquea la mayoría de redes sociales y VPNs.
   "er", // Eritrea — acceso a internet extremadamente restringido.
   "mm", // Myanmar — la junta bloquea Facebook, X e Instagram desde 2021.
-  // ── Restricción severa / persistente de alguna red monitoreada ──
+  "af", // Afganistán — TikTok prohibido por ley; restricciones extremas a la red.
+
+  // ── Restricción severa / Monitoreo inestable o cortes recurrentes ──
   "cu", // Cuba — acceso estatal limitado e intermitente; cortes en protestas.
-  "by", // Bielorrusia — redes restringidas y canales declarados "extremistas".
+  "by", // Bielorrusia — medios y redes declarados "extremistas".
   "sy", // Siria — censura estatal generalizada de las redes sociales.
-  "ve", // Venezuela — bloqueó X en 2024; restricciones recurrentes.
+  "ve", // Venezuela — bloqueos intermitentes de redes y apagones recurrentes.
   "pk", // Pakistán — X bloqueado desde feb. 2024; baneos recurrentes de TikTok.
+  "tr", // Turquía — Bloqueos tácticos y recurrentes a X/Meta y restricciones a TikTok.
+  "bd", // Bangladesh — Bloqueos intermitentes de Meta y amenazas constantes a TikTok.
+  "ug", // Uganda — Facebook e Instagram bloqueados de forma indefinida por el gobierno.
+  "zw", // Zimbabue — Apagones tácticos de internet y bloqueos en eventos políticos.
   "az", // Azerbaiyán — TikTok bloqueado; cortes de redes durante conflictos.
-  "tj", // Tayikistán — bloquea de forma rutinaria Facebook, YouTube y redes.
+  "tj", // Tayikistán — bloqueos constantes de Facebook, YouTube y redes.
   "uz", // Uzbekistán — ha bloqueado Twitter/X, TikTok y otras redes.
-  "sd", // Sudán — apagones de redes sociales prolongados y recurrentes.
+  "sd", // Sudán — apagones de red prolongados y recurrentes.
   "et", // Etiopía — apagones de internet y redes sociales prolongados.
+  "sa", // Arabia Saudita — Filtrado extremo y restricciones severas de contenido local.
+  "cg", // Congo — Cortes de internet móvil generalizados por orden estatal.
+  "cd", // Rep. Dem. del Congo — Bloqueos y apagones de red intermitentes.
+  "tg", // Togo — Ralentización extrema de servidores ("throttling") en redes sociales.
+
+  // ── Baja indexación en SerpAPI/Scraping (Evita búsquedas vacías) ──
+  "mn", // Mongolia — Baja indexación en APIs occidentales; genera búsquedas vacías.
+  "kg", // Kirguistán — Ecosistema digital aislado con bajísimo volumen en redes occidentales.
+  "la", // Laos — Tráfico controlado y nula indexación de datos locales occidentales.
+  "kh", // Camboya — Volumen de rastreo inestable y vacío fuera de nodos principales.
 ]);
 
 countries.registerLocale(esLocale);
